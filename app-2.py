@@ -20,7 +20,14 @@ from mpl_toolkits.mplot3d import Axes3D
 
 @st.cache_data
 def load_data():
-    return pd.read_excel('/Users/weiweiwang/Desktop/Internship_Project/all_clustering_results.xlsx')
+    file_url = "https://raw.githubusercontent.com/Mao225/CustomerServiceRequest/main/all_clustering_results.xlsx"
+
+    try:
+        data = pd.read_excel(file_url, engine='openpyxl')  
+        return data
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None  
 
 def parse_embedding(embedding_str):
     if isinstance(embedding_str, (np.ndarray, list)):
