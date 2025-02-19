@@ -1,0 +1,18 @@
+# Ignore system files
+.DS_Store
+
+# Ignore Streamlit cache
+.streamlit/
+
+# Ignore data files (if not needed)
+*.csv
+*.xlsx
+*.xls
+*.pdf
+*.docx
+*.pptx
+
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
