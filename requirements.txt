@@ -2,6 +2,6 @@ streamlit
 pandas
 numpy
 matplotlib
-openai==1.3.0  # Ensure the correct version
 scikit-learn
 scipy
+openai==0.28
