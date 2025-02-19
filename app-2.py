@@ -15,6 +15,11 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from collections import Counter
 from mpl_toolkits.mplot3d import Axes3D
 
+
+# Load API key from Streamlit secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+
 # ==================== 1) Data Loading & Parsing ====================
 
 
