@@ -413,6 +413,9 @@ def create_combined_metrics_editor(data, cluster_column, silhouette_score, weigh
     total_time_saving = edited_df['Time Savings (minutes)'].sum()
     st.session_state['total_time_saving'] = total_time_saving
 
+    st.markdown("**Time Savings Calculation:**")
+    st.markdown("- Time Savings = Request Count × Processing Time per Request × Weight Factor")
+
     st.markdown("**Weighted Factor Explanation:** ")
     st.markdown("- Combines silhouette score (measures cluster quality) and face validation (human evaluation of cluster quality)")
     st.markdown("- It is computed as: `(weight silhouette * silhouette score) + (weight face validation * face validation score)`")
