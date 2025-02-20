@@ -942,7 +942,7 @@ def analyze_request_themes(requests: list) -> dict:
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are an expert in analyzing customer service patterns."},
                 {"role": "user", "content": prompt}
