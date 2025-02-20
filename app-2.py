@@ -20,7 +20,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 @st.cache_data
 def load_data():
-    return pd.read_excel('/Users/weiweiwang/Desktop/Internship_Project/all_clustering_results.xlsx')
+    return pd.read_excel('all_clustering_results.xlsx')
 
 def parse_embedding(embedding_str):
     if isinstance(embedding_str, (np.ndarray, list)):
