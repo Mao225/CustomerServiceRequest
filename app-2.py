@@ -1361,12 +1361,6 @@ def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_
                         'minutes': total_saving * size_factor * similarity_factor,
                         'confidence': confidence
                     }
-
-      if 'Chat_interface' in global():
-          print("chat_interfce() is defined!!)
-      else:
-         print("chat_interface() is not defined")
-                
         
         # Initialize the chat interface
         chat_interface(
