@@ -903,9 +903,44 @@ def show_model_analysis_bgmm(
 
 
 # ==================== 10) Dynamic Chat Interface for Analysis Results ====================
+# Handles common questions without API#
+def get_cached_response(question: str, cluster_results: dict) -> str:
+   
+    question_lower = question.lower().strip('?!., ')
+    
+    # Common questions dictionary with dynamic response templates
+    common_responses = {
+        "what are the main insights": {
+            "check": lambda q: "main" in q and "insight" in q,
+            "response": lambda cr: (
+                f"Analysis using {cr['method']} identified {len(cr['patterns'])} clusters "
+                f"with a silhouette score of {cr['silhouette']:.2f}. "
+                "The clusters show distinct patterns in request types and complexity."
+            )
+        },
+        "what is the silhouette score": {
+            "check": lambda q: "silhouette" in q,
+            "response": lambda cr: (
+                f"The silhouette score is {cr['silhouette']:.2f}, indicating "
+                f"{'good' if cr['silhouette'] > 0.5 else 'moderate'} cluster separation."
+            )
+        },
+        "how many clusters": {
+            "check": lambda q: "how many" in q and "cluster" in q,
+            "response": lambda cr: f"The analysis identified {len(cr['patterns'])} distinct clusters."
+        }
+    }
+    
+    # Check if question matches any common patterns
+    for pattern in common_responses.values():
+        if pattern["check"](question_lower):
+            return pattern["response"](cluster_results)
+            
+    return None
+
 
 def analyze_request_themes(requests: list) -> dict:
-    if not requests:
+    if not requests or len(requests) == 0:
         return {
             'primary_topic': '',
             'request_type': '',
@@ -914,85 +949,120 @@ def analyze_request_themes(requests: list) -> dict:
             'automation_potential': ''
         }
 
-    combined_requests = "".join([f"- {req}" for req in requests])
-
-    prompt = (
-        "Analyze these customer service requests and identify patterns:"
-        f"{combined_requests}"
-        "Provide a JSON response with:"
-        "- primary_topic: Main subject/area"
-        "- request_type: Type of action requested"
-        "- complexity: 'Low', 'Medium', or 'High'"
-        "- key_characteristics: List of notable patterns"
-        "- automation_potential: Assessment of automation possibility"
-        "Respond only with the JSON."
-    )
+    # Only analyze first 3 requests to save tokens
+    sample_requests = requests[:3]
+    
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a focused request analyzer. Provide only a JSON response with the requested fields."
+        },
+        {
+            "role": "user",
+            "content": (
+                "Analyze these requests:\n" + 
+                "\n".join(f"- {req}" for req in sample_requests) +
+                "\nProvide ONLY a JSON with:\n" +
+                "- primary_topic (1-2 words)\n" +
+                "- request_type (1 word)\n" +
+                "- complexity (Low/Medium/High)\n" +
+                "- key_characteristics (list, max 2 items)\n" +
+                "- automation_potential (Low/High)"
+            )
+        }
+    ]
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an expert in analyzing customer service patterns."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1
+            messages=messages,
+            max_tokens=150,
+            temperature=0.1,
+            timeout=10
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        print(f"GPT-4 analysis error: {str(e)}")
+        print(f"Theme analysis error: {str(e)}")
         return {
             'primary_topic': 'General Request',
-            'request_type': 'General Inquiry',
+            'request_type': 'Inquiry',
             'complexity': 'Medium',
             'key_characteristics': [],
             'automation_potential': 'Unknown'
         }
 
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
-    context = {
-        'method': cluster_results['method'],
-        'silhouette': cluster_results['silhouette'],
-        'patterns': cluster_results['patterns'],
-        'similarities': cluster_results['similarities'],
-        'time_savings': cluster_results['time_savings']
-    }
+   
+    # Check for cached responses first
+    cached_response = get_cached_response(user_input, cluster_results)
+    if cached_response:
+        return cached_response
 
-    prompt = (
-        "As a clustering analysis expert, answer this question about the clustering results:"
-        f"Question: {user_input}"
-        "Context:"
-        f"{json.dumps(context, indent=2)}"
-        "Provide a clear, concise answer focusing on the specific aspects asked about."
-        "If the question is unclear, suggest related aspects that might be helpful."
-    )
+    # Extract only relevant context based on the question
+    relevant_context = {
+        'method': cluster_results['method'],
+        'silhouette': round(cluster_results['silhouette'], 3)
+    }
+    
+    # Add specific cluster info only if asked about clusters
+    for i in range(10):  # Assuming max 10 clusters
+        if f"cluster {i}" in user_input.lower():
+            cluster_key = str(i)
+            if cluster_key in cluster_results['patterns']:
+                relevant_context[f'cluster_{i}'] = cluster_results['patterns'][cluster_key]
+                if cluster_key in cluster_results.get('similarities', {}).get('intra', {}):
+                    relevant_context[f'similarity_{i}'] = cluster_results['similarities']['intra'][cluster_key]
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a clustering analysis expert. Provide concise, specific answers."
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Question: {user_input}\n"
+                f"Context: {json.dumps(relevant_context, indent=None)}\n"
+                "Respond in 2-3 clear sentences with specific metrics when available."
+            )
+        }
+    ]
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an expert in explaining clustering analysis results."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2
+            messages=messages,
+            max_tokens=150,
+            temperature=0.2,
+            timeout=10
         )
         return response.choices[0].message.content
-
     except Exception as e:
-        print(f"GPT-4 response error: {str(e)}")
+        print(f"Response error: {str(e)}")
         return (
-            "I encountered an error analyzing your question. You can ask about:"
-            "- Overall clustering insights"
-            "- Specific clusters"
-            "- Time savings and efficiency"
-            "- Similarities between clusters"
+            "I can help you understand clustering results, specific clusters, "
+            "or similarities. Please ask a specific question."
         )
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
+   
     st.header("Ask Questions About the Analysis")
 
-    # Initialize chat history
+    # Initialize session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
+        st.session_state.last_query_time = time.time()
+        st.session_state.query_count = 0
+        
+    # Show helpful suggestions for first-time users
+    if len(st.session_state.messages) == 0:
+        st.info(
+            "Suggested questions:\n"
+            "- What are the main insights?\n"
+            "- Tell me about cluster 0\n"
+            "- What is the silhouette score?\n"
+            "- How are the clusters similar?"
+        )
 
     # Display chat history
     for message in st.session_state.messages:
@@ -1009,9 +1079,28 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
 
-    # Process new input
+    # Process new input with rate limiting
     if user_input and user_input != st.session_state.get("last_user_input", ""):
-        st.session_state["last_user_input"] = user_input
+        # Check rate limiting
+        current_time = time.time()
+        if current_time - st.session_state.last_query_time < 2:
+            st.warning("Please wait a moment before asking another question.")
+            return
+            
+        # Check query limit
+        if st.session_state.query_count >= 20:
+            st.warning(
+                "You've reached the maximum questions for this session. "
+                "Please refresh to start a new session."
+            )
+            return
+            
+        # Update tracking
+        st.session_state.last_user_input = user_input
+        st.session_state.last_query_time = current_time
+        st.session_state.query_count += 1
+        
+        # Add to chat history
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         try:
@@ -1019,8 +1108,7 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
             st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
             error_msg = (
-                "I encountered an error analyzing your question. "
-                "Please try rephrasing or ask about a different aspect."
+                "Please try asking a more specific question about the clustering results."
             )
             st.session_state.messages.append({"role": "assistant", "content": error_msg})
             print(f"Chat interface error: {str(e)}")
