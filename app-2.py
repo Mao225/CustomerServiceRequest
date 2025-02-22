@@ -907,128 +907,157 @@ def show_model_analysis_bgmm(
 
 # ==================== 10) Dynamic Chat Interface for Analysis Results ====================
 
-# ==================== Cache Management ====================
-
-class ResponseCache:
-    def __init__(self):
-        self.cache = {}
-        self.ttl = 3600  # Cache TTL in seconds
-
-    def get(self, key: str) -> Optional[str]:
-        if key in self.cache:
-            timestamp, value = self.cache[key]
-            if time.time() - timestamp < self.ttl:
-                return value
-            else:
-                del self.cache[key]
-        return None
-
-    def set(self, key: str, value: str):
-        self.cache[key] = (time.time(), value)
-
-# Initialize cache
-if 'response_cache' not in st.session_state:
-    st.session_state.response_cache = ResponseCache()
-
-# ==================== Response Generation ====================
-
-def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
-    """Handle common questions without API calls"""
-    cache = st.session_state.response_cache
-    cache_key = f"{question}_{hash(str(cluster_results))}"
+def get_cached_response(question: str, cluster_results: dict) -> str:
+    """Handle common questions with pre-computed data, no API calls needed"""
     
-    # Check memory cache first
-    cached_response = cache.get(cache_key)
-    if cached_response:
-        return cached_response
-
     question_lower = question.lower().strip('?!., ')
     
-    # Common questions patterns
-    common_responses = {
-        "main_insights": {
-            "check": lambda q: any(word in q for word in ["main", "key", "primary"]) and 
-                              any(word in q for word in ["insight", "finding", "result"]),
-            "response": lambda cr: (
-                f"Analysis using {cr['method']} identified {len(cr['patterns'])} clusters "
-                f"with a silhouette score of {cr['silhouette']:.2f}. "
-                "The clusters show distinct patterns in request types and complexity."
-            )
-        },
-        "silhouette": {
-            "check": lambda q: "silhouette" in q or "score" in q,
-            "response": lambda cr: (
-                f"The silhouette score is {cr['silhouette']:.2f}, indicating "
-                f"{'good' if cr['silhouette'] > 0.5 else 'moderate'} cluster separation."
-            )
-        },
-        "cluster_count": {
-            "check": lambda q: ("how many" in q or "number of" in q) and "cluster" in q,
-            "response": lambda cr: f"The analysis identified {len(cr['patterns'])} distinct clusters."
-        },
-        "time_savings": {
-            "check": lambda q: "time" in q and ("save" in q or "saving" in q),
-            "response": lambda cr: (
-                f"Based on the analysis, implementing automated solutions could save "
-                f"approximately {sum(ts['minutes'] for ts in cr.get('time_savings', {}).values()):.1f} "
-                f"minutes across all clusters."
-            )
-        }
-    }
+    method = cluster_results['method']
+    silhouette = cluster_results['silhouette']
+    patterns = cluster_results['patterns']
+    similarities = cluster_results['similarities']
     
-    # Check patterns
-    for pattern in common_responses.values():
-        if pattern["check"](question_lower):
-            response = pattern["response"](cluster_results)
-            cache.set(cache_key, response)
-            return response
+    # Main insights question
+    if any(phrase in question_lower for phrase in ['main insight', 'key insight', 'overview', 'summary']):
+        # Interpret silhouette score
+        score_interpretation = (
+            "excellent separation between clusters" if silhouette > 0.7
+            else "good separation" if silhouette > 0.5
+            else "moderate separation" if silhouette > 0.3
+            else "weak separation and potential overlap"
+        )
+        
+        insights = [
+            f"The {method} analysis identified {len(patterns)} distinct clusters with "
+            f"a silhouette score of {silhouette:.2f}, indicating {score_interpretation}."
+        ]
+        
+        # Add cluster-specific insights
+        for cluster_id, info in patterns.items():
+            size = info['size_percentage']
+            themes = info['themes']
+            automation = info['automation_potential']
+            intra_sim = similarities['intra'][cluster_id]
             
+            cluster_info = [
+                f"\nCluster {cluster_id} ({size:.1f}% of requests):",
+                f"- Primary Topic: {themes['primary_topic']}",
+                f"- Request Type: {themes['request_type']}",
+                f"- Complexity: {themes['complexity']}",
+                f"- Internal Similarity: {intra_sim:.2f}",
+                f"- Automation Potential: {automation}"
+            ]
+            
+            # Add time savings if available
+            if 'time_savings' in cluster_results and cluster_id in cluster_results['time_savings']:
+                time_saved = cluster_results['time_savings'][cluster_id]['minutes']
+                cluster_info.append(f"- Estimated Time Savings: {time_saved:.1f} minutes")
+                
+            insights.extend(cluster_info)
+        
+        # Add overall similarity analysis
+        most_similar = max(similarities['inter'].items(), key=lambda x: x[1])
+        insights.append(
+            f"\nSimilarity Analysis:\n"
+            f"- Clusters {most_similar[0]} show highest similarity ({most_similar[1]:.2f})"
+        )
+        
+        # Add total time savings if available
+        if 'time_savings' in cluster_results:
+            total_savings = sum(ts['minutes'] for ts in cluster_results['time_savings'].values())
+            insights.append(
+                f"\nPotential Impact:\n"
+                f"- Estimated time savings: {total_savings:.1f} minutes across all clusters"
+            )
+        
+        return "\n".join(insights)
+    
+    # Silhouette score question
+    if 'silhouette' in question_lower:
+        interpretation = (
+            "excellent" if silhouette > 0.7
+            else "good" if silhouette > 0.5
+            else "moderate" if silhouette > 0.3
+            else "weak"
+        )
+        quality = (
+            "very well defined and separated" if silhouette > 0.7
+            else "well separated" if silhouette > 0.5
+            else "somewhat overlapping" if silhouette > 0.3
+            else "significantly overlapping"
+        )
+        return (
+            f"The silhouette score is {silhouette:.2f}, indicating {interpretation} cluster quality. "
+            f"This means the clusters are {quality}. "
+            f"For reference, scores range from -1 to 1, where higher values indicate better-defined clusters."
+        )
+    
+    # Specific cluster question
+    for i in range(10):
+        if f"cluster {i}" in question_lower:
+            cluster_id = str(i)
+            if cluster_id not in patterns:
+                return f"Cluster {i} was not found in the analysis results."
+            
+            info = patterns[cluster_id]
+            themes = info['themes']
+            size = info['size_percentage']
+            automation = info['automation_potential']
+            intra_sim = similarities['intra'][cluster_id]
+            
+            response = [
+                f"Cluster {i} Analysis:",
+                f"- Size: {size:.1f}% of total requests",
+                f"- Primary Topic: {themes['primary_topic']}",
+                f"- Request Type: {themes['request_type']}",
+                f"- Complexity: {themes['complexity']}",
+                f"- Internal Cohesion: {intra_sim:.2f}",
+                f"- Automation Potential: {automation}"
+            ]
+            
+            # Add time savings if available
+            if ('time_savings' in cluster_results and 
+                cluster_id in cluster_results['time_savings']):
+                time_saved = cluster_results['time_savings'][cluster_id]['minutes']
+                response.append(f"- Estimated Time Savings: {time_saved:.1f} minutes")
+            
+            # Add similarity with other clusters
+            similar_clusters = []
+            for pair, sim in similarities['inter'].items():
+                if cluster_id in pair.split('-'):
+                    other_cluster = pair.replace(cluster_id, '').replace('-', '')
+                    similar_clusters.append(f"Cluster {other_cluster}: {sim:.2f}")
+            
+            if similar_clusters:
+                response.append("\nSimilarity with other clusters:")
+                response.extend([f"- {s}" for s in similar_clusters])
+            
+            return "\n".join(response)
+    
+    # If no cached response matches, return None to use GPT API
     return None
 
-def get_cluster_specific_context(cluster_id: str, cluster_results: dict) -> dict:
-    """Get relevant context for a specific cluster"""
-    context = {}
-    
-    if cluster_id in cluster_results.get('patterns', {}):
-        context['pattern'] = cluster_results['patterns'][cluster_id]
-    if cluster_id in cluster_results.get('similarities', {}).get('intra', {}):
-        context['similarity'] = cluster_results['similarities']['intra'][cluster_id]
-    if cluster_id in cluster_results.get('time_savings', {}):
-        context['time_saving'] = cluster_results['time_savings'][cluster_id]
-        
-    return context
-
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
-    """Generate optimized responses to user questions"""
+    """Generate responses to user questions about clustering results"""
     
-    # Try cache first
+    # Try cached response first
     cached_response = get_cached_response(user_input, cluster_results)
     if cached_response:
         return cached_response
-
-    # Build minimal context
-    relevant_context = {
-        'method': cluster_results['method'],
-        'silhouette': round(cluster_results['silhouette'], 3)
-    }
     
-    # Add cluster-specific context only if explicitly mentioned
-    cluster_mention = re.search(r'cluster\s+(\d+)', user_input.lower())
-    if cluster_mention:
-        cluster_id = cluster_mention.group(1)
-        cluster_context = get_cluster_specific_context(cluster_id, cluster_results)
-        if cluster_context:
-            relevant_context[f'cluster_{cluster_id}'] = cluster_context
-    
-    # Optimized messages structure
+    # If no cached response, use GPT API
     messages = [
         {
             "role": "system",
-            "content": "You are a clustering expert. Provide concise, specific answers."
+            "content": "You are a clustering analysis expert. Provide concise, specific answers about the clustering results."
         },
         {
             "role": "user",
-            "content": f"Question: {user_input}\nContext: {json.dumps(relevant_context)}"
+            "content": (
+                f"Question: {user_input}\n"
+                f"Context: {json.dumps(cluster_results, indent=None)}\n"
+                "Respond in 2-3 clear sentences with specific metrics when available."
+            )
         }
     ]
     
@@ -1036,44 +1065,36 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=messages,
-            max_tokens=100,
+            max_tokens=150,
             temperature=0.2,
             timeout=10
         )
-        answer = response.choices[0].message.content
-        
-        # Cache the response
-        cache_key = f"{user_input}_{hash(str(cluster_results))}"
-        st.session_state.response_cache.set(cache_key, answer)
-        
-        return answer
+        return response.choices[0].message.content
     except Exception as e:
-        print(f"Error generating response: {str(e)}")
-        return "Please ask a specific question about the clustering results."
-
-# ==================== Chat Interface ====================
+        print(f"GPT API error: {str(e)}")
+        return "I'm having trouble analyzing that. Please try asking about specific aspects like cluster sizes or silhouette scores."
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
-    """Main chat interface with token usage optimization"""
+    """Main chat interface with optimized response handling"""
     
     st.header("Ask Questions About the Analysis")
-
+    
     # Initialize session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
         st.session_state.last_query_time = time.time()
         st.session_state.query_count = 0
-        
-    # First-time user suggestions
+    
+    # Show helpful suggestions for first-time users
     if len(st.session_state.messages) == 0:
         st.info(
             "Suggested questions:\n"
             "- What are the main insights?\n"
             "- Tell me about cluster 0\n"
             "- What is the silhouette score?\n"
-            "- How much time could we save?"
+            "- How are the clusters similar?"
         )
-
+    
     # Display chat history
     for message in st.session_state.messages:
         with st.container():
@@ -1081,22 +1102,22 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                 st.markdown(f"**You:** {message['content']}")
             else:
                 st.markdown(f"**Assistant:** {message['content']}")
-
+    
     # Get user input
     user_input = st.text_input(
         "Ask about the clustering results:",
         key="user_input",
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
-
+    
     # Process new input with rate limiting
     if user_input and user_input != st.session_state.get("last_user_input", ""):
-        # Rate limiting check
+        # Rate limiting
         current_time = time.time()
         if current_time - st.session_state.last_query_time < 2:
             st.warning("Please wait a moment before asking another question.")
             return
-            
+        
         # Query limit check
         if st.session_state.query_count >= 20:
             st.warning(
@@ -1104,7 +1125,7 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                 "Please refresh to start a new session."
             )
             return
-            
+        
         # Update tracking
         st.session_state.last_user_input = user_input
         st.session_state.last_query_time = current_time
@@ -1112,60 +1133,15 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
         
         # Add to chat history and generate response
         st.session_state.messages.append({"role": "user", "content": user_input})
-
         try:
             response = analyze_and_respond(user_input, data, cluster_results)
             st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
-            error_msg = (
-                "Please try asking a more specific question about the clustering results."
-            )
+            error_msg = "Please try asking a more specific question about the clustering results."
             st.session_state.messages.append({"role": "assistant", "content": error_msg})
             print(f"Chat interface error: {str(e)}")
-
-        st.rerun()
-
-# ==================== Usage Data Collection ====================
-
-class UsageTracker:
-    def __init__(self):
-        self.total_tokens = 0
-        self.request_count = 0
-        self.token_usage_log = []
-
-    def log_usage(self, tokens: int):
-        self.total_tokens += tokens
-        self.request_count += 1
-        self.token_usage_log.append({
-            'timestamp': time.time(),
-            'tokens': tokens
-        })
-
-    def get_summary(self) -> dict:
-        return {
-            'total_tokens': self.total_tokens,
-            'request_count': self.request_count,
-            'avg_tokens_per_request': self.total_tokens / max(1, self.request_count)
-        }
-
-# Initialize usage tracker
-if 'usage_tracker' not in st.session_state:
-    st.session_state.usage_tracker = UsageTracker()
-
-# ==================== Debug Interface ====================
-
-def show_debug_info():
-    """Optional debug interface for monitoring token usage"""
-    if st.sidebar.checkbox("Show Debug Info"):
-        st.sidebar.subheader("Usage Statistics")
-        usage_summary = st.session_state.usage_tracker.get_summary()
-        st.sidebar.write(f"Total Tokens: {usage_summary['total_tokens']}")
-        st.sidebar.write(f"Total Requests: {usage_summary['request_count']}")
-        st.sidebar.write(f"Avg Tokens/Request: {usage_summary['avg_tokens_per_request']:.1f}")
         
-        if st.sidebar.button("Clear Cache"):
-            st.session_state.response_cache = ResponseCache()
-            st.sidebar.success("Cache cleared!")
+        st.rerun()
 
 # ==================== 11) Process Functions for Each Method ====================
 
