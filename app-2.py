@@ -1191,7 +1191,6 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
         # Add both user prompt and GPT answer to the conversation
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.messages.append({"role": "assistant", "content": response})
-        st.experimental_rerun()
 
 # ==================== 11) Process Functions for Each Method ====================
 
