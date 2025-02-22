@@ -913,6 +913,7 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     """
     Handles common or repeated questions with 'cached' logic. 
     If it recognizes the question, it calls GPT for theme or similarity and caches the result.
+    Includes specific handling for modularization and automation queries.
     """
     # Make a simple key from the user's question + clustering method + silhouette
     method = cluster_results['method']
@@ -927,21 +928,36 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     cluster_patterns = cluster_results['patterns']
     cluster_similarities = cluster_results['similarities']
 
+    # Check for modularization/automation related questions
+    if any(phrase in question_lower for phrase in [
+        "modularization", "automation", "opportunity", "opportunities",
+        "automate", "improve", "efficiency", "module", "reusable",
+        "template", "workflow", "process", "standardize"
+    ]):
+        response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities)
+        gpt_cache[cache_key] = response
+        return response
+
     # If user asks for "main insights" or something similar, call GPT theme analysis
-    if any(phrase in question_lower for phrase in ["main insight", "main insights", "key insight", "overview", "summary"]):
-    # call generate_gpt_theme_analysis
+    if any(phrase in question_lower for phrase in [
+        "main insight", "main insights", "key insight", "overview", 
+        "summary", "analyze", "analysis", "theme", "pattern"
+    ]):
         response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities)
         gpt_cache[cache_key] = response
         return response
     
-    # If user asks about "similarity", call GPT similarity analysis
-    if "similarity" in question_lower or "cohesion" in question_lower:
+    # If user asks about "similarity" or cohesion
+    if any(phrase in question_lower for phrase in [
+        "similarity", "cohesion", "coherence", "related", "relationship",
+        "connection", "overlap", "distance"
+    ]):
         response = generate_gpt_similarity_analysis(cluster_similarities, method, silhouette)
         gpt_cache[cache_key] = response
         return response
 
-    # If user asks about silhouette
-    if 'silhouette' in question_lower:
+    # If user asks about silhouette score
+    if any(phrase in question_lower for phrase in ["silhouette", "quality", "validation", "score"]):
         interpretation = (
             "excellent" if silhouette > 0.7
             else "good" if silhouette > 0.5
@@ -954,14 +970,21 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
             else "somewhat overlapping" if silhouette > 0.3
             else "significantly overlapping"
         )
+        modular_potential = (
+            "high potential for modularization" if silhouette > 0.7
+            else "moderate potential for modularization" if silhouette > 0.5
+            else "limited potential for modularization" if silhouette > 0.3
+            else "challenging for modularization"
+        )
         response = (
             f"The silhouette score is {silhouette:.2f}, indicating {interpretation} cluster quality. "
-            f"This means the clusters are {quality}. Higher values (closer to 1) indicate better-defined clusters."
+            f"This means the clusters are {quality}, suggesting {modular_potential}. "
+            f"Higher values (closer to 1) indicate better-defined clusters and better modularization potential."
         )
         gpt_cache[cache_key] = response
         return response
 
-    # If user specifically asks about cluster i (0..9, or more)
+    # If user specifically asks about a specific cluster
     import re
     match = re.search(r"cluster\s+(\d+)", question_lower)
     if match:
@@ -969,6 +992,24 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities, cluster_id)
         gpt_cache[cache_key] = response
         return response
+
+    # If user asks about time savings
+    if any(phrase in question_lower for phrase in ["time", "saving", "efficiency", "ROI", "benefit"]):
+        time_savings = cluster_results.get('time_savings', {})
+        if time_savings:
+            total_minutes = sum(cluster['minutes'] for cluster in time_savings.values())
+            high_confidence = sum(
+                cluster['minutes'] 
+                for cluster in time_savings.values() 
+                if cluster['confidence'] == 'high'
+            )
+            response = (
+                f"Total estimated time savings: {total_minutes:.1f} minutes, "
+                f"with {high_confidence:.1f} minutes from high-confidence opportunities. "
+                "These estimates are based on cluster sizes and similarity scores."
+            )
+            gpt_cache[cache_key] = response
+            return response
 
     # If none of the above matched, return None so we can do a generic GPT call
     return None
@@ -978,9 +1019,8 @@ def generate_gpt_theme_analysis(
     cluster_patterns, method, silhouette, cluster_similarities, cluster_id=None
 ):
     """
-    Dynamically calls GPT to generate theme insights 
-    if we don't have a quick cached response (handled above).
-    Uses a global gpt_cache as well.
+    Dynamically calls GPT to generate theme insights and modularization opportunities.
+    Uses caching to avoid repeat API calls.
     """
     # Build a unique key for the GPT call itself
     # If cluster_id is None, it's an "overall" request
@@ -993,21 +1033,23 @@ def generate_gpt_theme_analysis(
     # Prepare data to feed GPT
     if cluster_id is None:
         # Summarize all clusters
-        question_prompt = "Summarize the key themes and insights from these customer clusters."
+        question_prompt = "Analyze the customer request clusters for modularization opportunities."
         selected_clusters = cluster_patterns
     else:
-        question_prompt = f"Analyze the themes for Cluster {cluster_id}."
+        question_prompt = f"Analyze Cluster {cluster_id} for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
     # Gather request text from each cluster
     cluster_requests = {}
+    cluster_metrics = {}
     for cid, info in selected_clusters.items():
-        # 'requests' or 'themes'— depends on how you stored them
-        # If you have 'representative requests' or something, adjust accordingly
-        if isinstance(info, dict) and 'requests' in info:
-            cluster_requests[cid] = info['requests']
-        else:
-            cluster_requests[cid] = []
+        if isinstance(info, dict):
+            cluster_requests[cid] = info.get('requests', [])
+            cluster_metrics[cid] = {
+                'size_percentage': info.get('size_percentage', 0),
+                'automation_potential': info.get('automation_potential', 'low'),
+                'intra_similarity': cluster_similarities.get('intra', {}).get(str(cid), 0)
+            }
 
     if not any(cluster_requests.values()):
         result = "No meaningful insights can be extracted because no request samples are available."
@@ -1018,7 +1060,27 @@ def generate_gpt_theme_analysis(
     messages = [
         {
             "role": "system",
-            "content": "You are a customer service analytics expert. Identify key themes from customer requests."
+            "content": """You are a customer service analytics expert focusing on identifying modularization opportunities.
+Your task is to analyze customer service requests and identify patterns that could be turned into reusable components 
+or automated solutions. Consider both technical feasibility and business impact.
+
+Guidelines for analysis:
+1. Technical Feasibility Levels (based on intra-cluster similarity):
+   - High (>0.7): Strong candidate for automation
+   - Medium (0.5-0.7): Partial automation possible
+   - Low (<0.5): Requires significant human oversight
+
+2. Impact Assessment:
+   - Consider cluster size percentage
+   - Evaluate complexity of implementation
+   - Assess potential time savings
+
+3. Types of Opportunities:
+   - Full automation of responses
+   - Templated solutions
+   - Guided workflows
+   - Reusable components
+   - Knowledge base articles"""
         },
         {
             "role": "user",
@@ -1026,8 +1088,16 @@ def generate_gpt_theme_analysis(
                 f"{question_prompt}\n\n"
                 f"Clustering Method: {method}\n"
                 f"Silhouette Score: {silhouette:.2f}\n"
-                f"Cluster Data:\n{json.dumps(cluster_requests)}\n"
-                "Provide a structured summary with key themes, request types, and complexity levels."
+                f"Cluster Data:\n{json.dumps(cluster_requests, indent=2)}\n"
+                f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n\n"
+                "Please provide a structured analysis including:\n"
+                "1. Key Patterns: Identify common themes and request patterns\n"
+                "2. Modularization Opportunities: For each identified pattern:\n"
+                "   - Technical feasibility rating\n"
+                "   - Business impact assessment\n"
+                "   - Implementation complexity\n"
+                "3. Recommendations: Specific suggestions for implementation\n"
+                "4. Priority: High/Medium/Low based on feasibility and impact"
             )
         }
     ]
@@ -1036,7 +1106,7 @@ def generate_gpt_theme_analysis(
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=messages,
-            max_tokens=250,
+            max_tokens=350,  # Increased for more detailed analysis
             temperature=0.3,
             timeout=10
         )
@@ -1048,7 +1118,6 @@ def generate_gpt_theme_analysis(
     # Cache and return
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
-
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
@@ -1316,8 +1385,6 @@ def process_bgmm(data, mat, emb_valid):
 
 # ==================== 12) Process Clustering Results for Chat Interface ====================
 
-# ==================== 12) Process Clustering Results for Chat Interface ====================
-
 def generate_gpt_theme_analysis_for_cluster(requests, cluster_id):
     """
     Dynamically calls GPT to analyze themes for a specific cluster.
@@ -1411,11 +1478,16 @@ def process_clustering_results(
                 continue  # skip noise
             cluster_id_str = str(int(cluster_id))
             size_percentage = (cluster_sizes.get(cluster_id, 0) / total_requests) * 100
-
+            
             cluster_patterns[cluster_id_str] = {
                 'size_percentage': size_percentage,
                 'requests': requests,
-                'automation_potential': 'high' if intraD.get(cluster_id, 0) > 0.7 else 'medium'
+                'automation_potential': (
+                    'high' if intraD.get(cluster_id, 0) > 0.7
+                    else 'medium' if intraD.get(cluster_id, 0) > 0.5
+                    else 'low'
+                ),
+                'intra_similarity': intraD.get(cluster_id, 0)  # Added for better GPT analysis
             }
 
         # 4) Optionally store time-savings data (no GPT calls)
