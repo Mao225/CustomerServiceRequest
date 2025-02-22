@@ -1315,76 +1315,29 @@ def process_bgmm(data, mat, emb_valid):
 
 # ==================== 12) Process Clustering Results for Chat Interface ====================
 
-def generate_gpt_theme_analysis_for_cluster(requests, cluster_id):
-    """Dynamically calls GPT to analyze themes for a specific cluster."""
-
-    if not requests:
-        return {
-            "primary_topic": "Unknown",
-            "request_type": "Unknown",
-            "complexity": "Unknown"
-        }
-
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a customer service analytics expert. Identify key themes from customer requests."
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Analyze the themes in these customer requests for Cluster {cluster_id}:\n\n"
-                f"{json.dumps(requests)}\n\n"
-                "Summarize the primary topics, request types, and complexity levels."
-            )
-        }
-    ]
-    
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=messages,
-            max_tokens=250,
-            temperature=0.3,
-            timeout=10
-        )
-        return response.choices[0].message.content
-
-    except Exception as e:
-        print(f"GPT API error: {str(e)}")
-        return {
-            "primary_topic": "Unknown",
-            "request_type": "Unknown",
-            "complexity": "Unknown"
-        }
-
-
-def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_similarities,
-                               time_savings, method_model1, param_display, silhouette_for_summary):
+def process_clustering_results(
+    valid_df, cluster_col, cluster_patterns, cluster_similarities,
+    time_savings, method_model1, param_display, silhouette_for_summary
+):
     E_list, L_list = [], []
     for _, row in valid_df.iterrows():
         arr = parse_embedding(row["Embeddings"])
         lab = row[cluster_col]
         if arr is not None:
             E_list.append(arr)
-            L_list.append(int(lab))  # cast cluster label to plain int
+            L_list.append(int(lab))
 
     if E_list:
         X = np.vstack(E_list)
         Y = np.array(L_list)
         intraD, c_list, mat = analyze_cluster_similarity(X, Y)
 
-        # ----------------------
-        # 1) Fix 'intra' keys
-        # ----------------------
+        # 1) Store the similarity results (no GPT calls here)
         cluster_similarities['intra'] = {}
         for k, v in intraD.items():
             k_str = str(int(k))
             cluster_similarities['intra'][k_str] = v
 
-        # ----------------------
-        # 2) Fix 'inter' keys
-        # ----------------------
         cluster_similarities['inter'] = {}
         for i, c1 in enumerate(c_list):
             for j, c2 in enumerate(c_list):
@@ -1392,34 +1345,42 @@ def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_
                     key_str = f"{int(c1)}-{int(c2)}"
                     cluster_similarities['inter'][key_str] = mat[i, j]
 
-        # Extract patterns from representative requests
+        # 2) Extract representative requests, but don’t call GPT yet
         reps = extract_representative_requests(valid_df, X, Y, n_representatives=5)
 
-        # Calculate cluster sizes as percentages
+        # 3) Calculate cluster sizes
         cluster_sizes = valid_df[cluster_col].value_counts()
         total_requests = cluster_sizes.sum()
 
-        # ----------------------
-        # 3) Fix cluster_id keys in patterns
-        # ----------------------
+        # 4) Store cluster info in cluster_patterns, 
+        #    Do NOT call GPT for each cluster automatically
         for cluster_id, requests in reps.items():
-            if cluster_id != -1:  # Skip noise points
+            if cluster_id != -1:
                 size_percentage = (cluster_sizes.get(cluster_id, 0) / total_requests) * 100
-                themes = generate_gpt_theme_analysis_for_cluster(requests, cluster_id)
                 cluster_id_str = str(int(cluster_id))
+                # Just store the requests or minimal info
                 cluster_patterns[cluster_id_str] = {
                     'size_percentage': size_percentage,
-                    'themes': themes,
+                    'requests': requests,
                     'automation_potential': 'high' if intraD.get(cluster_id, 0) > 0.7 else 'medium'
                 }
 
-        # ----------------------
-        # 4) Fix cluster_id keys in time_savings
-        # ----------------------
+        # 5) An OPTIONAL button to see GPT summaries:
+        if st.button("Generate Automatic GPT Summaries"):
+            for cid_str, info in cluster_patterns.items():
+                # For each cluster, call GPT one time
+                cluster_id = cid_str
+                requests_list = info.get('requests', [])
+                themes = generate_gpt_theme_analysis_for_cluster(requests_list, cluster_id)
+                # st.write to display the GPT text
+                st.subheader(f"GPT Themes for Cluster {cluster_id}")
+                st.write(themes)
+
+        # 6) If you have time savings, store them
         if 'total_time_saving' in st.session_state:
             total_saving = st.session_state['total_time_saving']
             for cluster_id in cluster_sizes.index:
-                if cluster_id != -1:  # Skip noise
+                if cluster_id != -1:  # skip noise
                     size_factor = cluster_sizes[cluster_id] / cluster_sizes.sum()
                     similarity_factor = intraD.get(cluster_id, 0)
                     confidence = 'high' if similarity_factor > 0.7 else 'medium'
@@ -1428,8 +1389,8 @@ def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_
                         'minutes': total_saving * size_factor * similarity_factor,
                         'confidence': confidence
                     }
-        
-        # Initialize the chat interface
+
+        # 7) Finally, initialize the chat (which calls GPT if user types a question):
         chat_interface(
             data=valid_df,
             cluster_results={
