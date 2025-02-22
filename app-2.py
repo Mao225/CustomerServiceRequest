@@ -928,7 +928,8 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     cluster_similarities = cluster_results['similarities']
 
     # If user asks for "main insights" or something similar, call GPT theme analysis
-    if any(phrase in question_lower for phrase in ['main insight', 'key insight', 'overview', 'summary']):
+    if any(phrase in question_lower for phrase in ["main insight", "main insights", "key insight", "overview", "summary"]):
+    # call generate_gpt_theme_analysis
         response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities)
         gpt_cache[cache_key] = response
         return response
