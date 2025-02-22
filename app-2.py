@@ -1403,27 +1403,38 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
     Returns formatted response with method header.
     """
     try:
+        print("Starting analysis...")  # Debug print
+        
         # Extract key information
         method = cluster_results.get('method', 'Unknown')
         parameters = cluster_results.get('parameters', '')
         silhouette = cluster_results.get('silhouette', 0.0)
         
+        print(f"Method: {method}, Parameters: {parameters}, Silhouette: {silhouette}")  # Debug print
+        print(f"Cluster results keys: {cluster_results.keys()}")  # Debug print
+        
         # Create method header
         method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
         # Try to get cached response
+        print("Getting cached response...")  # Debug print
         cached_answer = get_cached_response(user_input, cluster_results)
         if cached_answer:
+            print("Found cached response")  # Debug print
             return method_header + cached_answer
 
         # If no cached response, prepare context for GPT
+        print("Preparing context...")  # Debug print
         context = {
             'patterns': cluster_results.get('patterns', {}),
             'similarities': cluster_results.get('similarities', {}),
             'time_savings': cluster_results.get('time_savings', {})
         }
         
+        print("Context prepared:", context)  # Debug print
+        
         # Generate new response
+        print("Generating GPT response...")  # Debug print
         gpt_response = cached_gpt_response(
             user_input=user_input,
             method=method,
@@ -1431,10 +1442,11 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             context=json.dumps(context, indent=2)
         )
         
+        print("Response generated")  # Debug print
         return method_header + gpt_response
 
     except Exception as e:
-        print(f"Error in analyze_and_respond: {str(e)}")
+        print(f"Error in analyze_and_respond: {str(e)}")  # Debug print
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
                         
