@@ -1191,7 +1191,7 @@ Always provide complete responses for each section, ensuring business impact is 
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
-    Generate analysis of cluster similarity and quality metrics.
+    Generate analysis of cluster similarity and quality metrics with focus on GMH-specific patterns.
     """
     cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
     if cache_key in gpt_cache:
@@ -1206,48 +1206,52 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     if not intra_sim and not inter_sim:
         return "No similarity scores are available for analysis."
 
-    system_prompt = """You are a clustering analysis expert specializing in CAD-related customer service requests. Analyze cluster quality and relationships following this detailed structure:
+    system_prompt = """You are a clustering analysis expert specializing in CAD-related customer service requests. 
+Analyze cluster quality and relationships with special attention to GMH product extension patterns. Follow this detailed structure:
 
 1. Overall Cluster Quality:
    - Interpret the silhouette score's implications for CAD automation potential
-   - Evaluate the strength of cluster boundaries in terms of CAD component categories
-   - Assess the overall clustering solution quality for identifying reusable CAD elements
-   - Identify any potential clustering issues that might affect CAD automation
+   - Evaluate cluster boundaries for GMH vs non-GMH request separation
+   - Assess clustering quality for identifying reusable CAD elements
+   - Look for patterns in how GMH-related requests are distributed across clusters
 
 2. Individual Cluster Analysis:
-   - Analyze the cohesion of each cluster (intra-cluster similarity) for CAD component standardization
-   - Identify clusters with strong potential for CAD template creation
-   - Evaluate cluster sizes to prioritize automation efforts
-   - Note clusters that might need refinement due to CAD complexity variations
+   - Analyze cohesion of each cluster (intra-cluster similarity)
+   - Identify clusters with high concentration of GMH requests
+   - Note clusters that mix GMH and non-GMH requests
+   - Evaluate potential for GMH-specific template creation
+   - Consider cluster sizes for prioritizing GMH automation efforts
 
 3. Inter-cluster Relationships:
-   - Examine similarities between clusters to identify shared CAD elements
-   - Identify overlapping CAD component requirements across clusters
-   - Note distinctly separated design categories
-   - Analyze hierarchical relationships between CAD component types
+   - Examine similarities between GMH and non-GMH clusters
+   - Identify shared CAD elements across GMH request clusters
+   - Analyze patterns in how GMH extensions relate to base products
+   - Look for opportunities to standardize GMH extension processes
 
-4. CAD Automation Implications:
-   - Assess modularization potential for CAD libraries and templates
-   - Identify clusters suitable for immediate CAD automation
-   - Suggest clusters that might need further refinement due to design complexity
-   - Consider cross-cluster opportunities for shared CAD components
+4. GMH-Specific Automation Implications:
+   - Assess modularization potential for GMH-specific CAD libraries
+   - Identify clusters suitable for immediate GMH template creation
+   - Consider cross-cluster opportunities for GMH product extensions
+   - Evaluate potential for automated GMH numbering systems
+   - Analyze patterns in GMH documentation requirements
 
 5. Technical Implementation Strategy:
-   - Suggest approaches for handling varying CAD complexity levels
-   - Recommend strategies for managing CAD file versions and variations
-   - Propose validation methods for automated CAD solutions
-   - Consider integration requirements with existing CAD/PLM/PDM systems
+   - Suggest approaches for handling GMH product variations
+   - Recommend strategies for managing GMH CAD file versions
+   - Propose validation methods specific to GMH automation
+   - Consider integration with existing GMH plant systems
+   - Define requirements for GMH-specific data fields
 
 6. Business Impact Assessment:
-   - Evaluate the reliability of cluster-based CAD automation
-   - Consider the impact of cluster quality on design accuracy and consistency
-   - Assess scalability implications for CAD template libraries
-   - Suggest priority areas for implementation based on potential time savings
-   - Total time savings per cluster:
-     * Calculate total minutes saved if the identified modularization opportunity is implemented
-     * Show the time savings calculation from the provided time_savings data
+   - Evaluate reliability of GMH-related cluster automation
+   - Consider impact on GMH product extension accuracy
+   - Assess scalability for GMH template libraries
+   - Prioritize implementation based on GMH request volumes
+   - Calculate time savings specifically for GMH-related work:
+     * Show total minutes saved for GMH clusters
+     * Compare efficiency gains between GMH and non-GMH requests
 
-Focus on providing actionable insights that can guide CAD automation and standardization decisions while maintaining design quality and efficiency."""
+Focus on providing actionable insights that can guide GMH-specific automation while maintaining consistency with base product standards."""
 
     max_retries = 3
     retry_delay = 1
@@ -1261,17 +1265,17 @@ Focus on providing actionable insights that can guide CAD automation and standar
                     {
                         "role": "user",
                         "content": (
-                            f"Analyze cluster quality metrics:\n\n"
+                            f"Analyze cluster quality metrics with focus on GMH patterns:\n\n"
                             f"Method: {method}\n"
                             f"Silhouette Score: {silhouette:.2f}\n"
                             f"\nIntra-Cluster Similarity:\n{intra_text}\n"
                             f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                            f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
-                            "For business impact, simply calculate and show the total minutes saved per cluster based on the time_savings data."
+                            "Pay special attention to clusters containing GMH-related requests "
+                            "and opportunities for automating GMH product extensions."
                         )
                     }
                 ],
-                max_tokens=500,
+                max_tokens=600,  # Increased for more comprehensive GMH analysis
                 temperature=0.3,
                 timeout=20
             )
@@ -1294,50 +1298,49 @@ Focus on providing actionable insights that can guide CAD automation and standar
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
     """
     Implements an interactive chat interface for analyzing clustering results.
+    Handles message history and error states properly.
     """
     st.header("Ask Questions About the Analysis")
 
-    # Initialize session states
+    # Initialize session states if not exist
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "last_processed" not in st.session_state:
         st.session_state.last_processed = set()
 
+    # Create container for chat
     chat_container = st.container()
     
     # Display existing chat history
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                # Use markdown for assistant messages to properly format the method header
-                if message["role"] == "assistant":
-                    st.markdown(message["content"])
-                else:
-                    st.write(message["content"])
+                st.markdown(message["content"])
 
-    # Text input
+    # Get user input
     user_input = st.text_input(
         "Ask about these clustering results:",
         key="user_input",
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
 
-    # Process new input
+    # Process new input if not already processed
     if user_input and user_input not in st.session_state.last_processed:
         with chat_container:
-            # Display user message
+            # Show user message
             with st.chat_message("user"):
                 st.write(user_input)
             
-            # Process and display assistant response
+            # Process and show assistant response
             with st.chat_message("assistant"):
-                with st.status("Analyzing...", expanded=False) as status:
-                    try:
-                        # Process response without showing technical details
+                try:
+                    # Create status indicator
+                    with st.status("Analyzing...", expanded=False) as status:
+                        # Get response
                         response = analyze_and_respond(user_input, data, cluster_results)
+                        # Update status on success
                         status.update(label="Analysis complete!", state="complete")
-                        
-                        # Show the response using markdown
+                        # Display response
                         st.markdown(response)
                         
                         # Update conversation history
@@ -1347,10 +1350,11 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                         ])
                         st.session_state.last_processed.add(user_input)
                         
-                    except Exception as e:
-                        status.update(label="Analysis failed", state="error")
-                        st.error("I apologize, but I encountered an error. Please try again.")
-                        print(f"Error in chat interface: {str(e)}")
+                except Exception as e:
+                    # Handle errors gracefully
+                    status.update(label="Analysis failed", state="error")
+                    st.error("I apologize, but I encountered an error. Please try again.")
+                    print(f"Error in chat interface: {str(e)}")
 
 
 
@@ -1396,24 +1400,36 @@ and answer the user's specific question. Focus on:
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
     Main dispatcher for handling user questions about clustering results.
+    Returns formatted response with method header.
     """
     try:
-        # Get method info for header
-        method = cluster_results['method']
-        parameters = cluster_results['parameters']
-        silhouette = cluster_results['silhouette']
+        # Extract key information
+        method = cluster_results.get('method', 'Unknown')
+        parameters = cluster_results.get('parameters', '')
+        silhouette = cluster_results.get('silhouette', 0.0)
         
         # Create method header
         method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
-        # First try to get a cached response
+        # Try to get cached response
         cached_answer = get_cached_response(user_input, cluster_results)
         if cached_answer:
             return method_header + cached_answer
 
-        # If no cached response, generate new one with GPT
-        context = json.dumps(cluster_results, indent=2)
-        gpt_response = cached_gpt_response(user_input, method, silhouette, context)
+        # If no cached response, prepare context for GPT
+        context = {
+            'patterns': cluster_results.get('patterns', {}),
+            'similarities': cluster_results.get('similarities', {}),
+            'time_savings': cluster_results.get('time_savings', {})
+        }
+        
+        # Generate new response
+        gpt_response = cached_gpt_response(
+            user_input=user_input,
+            method=method,
+            silhouette=silhouette,
+            context=json.dumps(context, indent=2)
+        )
         
         return method_header + gpt_response
 
