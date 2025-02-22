@@ -336,8 +336,8 @@ def extract_representative_requests(data, embeddings, cluster_labels, n_represen
             c_indices = subset.index
         else:
             c_indices = cluster_data.index[:n_representatives]
-        if 'Message' in data_copy.columns:
-            reps = data_copy.loc[c_indices, 'Message'].tolist()
+        if 'Updated_Message' in data_copy.columns:
+            reps = data_copy.loc[c_indices, 'Updated_Message'].tolist()
             representatives[int(cluster_id)] = reps
     return representatives
 
@@ -449,7 +449,7 @@ def create_combined_metrics_editor(data, cluster_column, silhouette_score, weigh
 
 # ==================== 9) Model Analysis sections ====================
 
-# ==================== 9.1) K-Means ====================
+# ==================== K-Means ====================
 def show_model_analysis_kmeans(model_name,
                                data,
                                embedding_column,
@@ -552,7 +552,7 @@ def show_model_analysis_kmeans(model_name,
         else:
             st.warning("No data available.")
 
-# ==================== 9.2) DBSCAN ====================
+# ==================== DBSCAN ====================
 def show_model_analysis_dbscan(
     model_name,
     data,
@@ -702,7 +702,7 @@ def show_model_analysis_dbscan(
         else:
             st.warning("No data available for representative requests.")
 
-# ==================== 9.3) GMM ====================
+# ==================== GMM ====================
 def show_model_analysis_gmm(
     model_name,
     data,
@@ -801,7 +801,7 @@ def show_model_analysis_gmm(
         else:
             st.warning("No data available.")
 
-# ==================== 9.4) BGMM ====================
+# ==================== BGMM ====================
 def show_model_analysis_bgmm(
     model_name,
     data,
