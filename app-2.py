@@ -1090,6 +1090,40 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         print(f"GPT API error: {str(e)}")
         return "I'm having trouble analyzing that. Please try asking about specific aspects like cluster sizes or silhouette scores."
 
+
+
+def chat_interface(data: pd.DataFrame, cluster_results: dict):
+    """Main chat interface with optimized response handling"""
+
+    st.header("Ask Questions About the Analysis")
+
+    # Initialize session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.last_query_time = time.time()
+        st.session_state.query_count = 0
+
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.container():
+            if message['role'] == 'user':
+                st.markdown(f"**You:** {message['content']}")
+            else:
+                st.markdown(f"**Assistant:** {message['content']}")
+
+    # Get user input
+    user_input = st.text_input(
+        "Ask about the clustering results:",
+        key="user_input",
+        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+    )
+
+    # Process new input with rate limiting
+    if user_input and user_input != st.session_state.get("last_user_input", ""):
+        response = analyze_and_respond(user_input, data, cluster_results)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
 # ==================== 11) Process Functions for Each Method ====================
 
 def process_kmeans(data, mat, emb_valid):
