@@ -1076,10 +1076,11 @@ def generate_gpt_theme_analysis(
     method, 
     silhouette, 
     cluster_similarities, 
+    time_savings,
     cluster_id=None
 ):
     """
-    Generate themed analysis for either a specific cluster or all clusters.
+    Enhanced theme analysis that includes business impact and plant-specific logic.
     """
     # Build unique cache key
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
@@ -1094,104 +1095,99 @@ def generate_gpt_theme_analysis(
         question_prompt = f"Analyze Cluster {cluster_id} specifically for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
-    # Gather cluster data
+    # Gather cluster data including time savings
     cluster_data = {}
     for cid, info in selected_clusters.items():
         if isinstance(info, dict):
             cluster_data[cid] = {
                 'requests': info.get('requests', []),
                 'size_percentage': info.get('size_percentage', 0),
-                'intra_similarity': cluster_similarities.get('intra', {}).get(str(cid), 0)
+                'intra_similarity': cluster_similarities.get('intra', {}).get(str(cid), 0),
+                'time_savings': time_savings.get(str(cid), {})
             }
-            # Add inter-cluster similarities if relevant
-            if cluster_id is not None:
-                inter_key = f"{cluster_id}-{cid}"
-                if inter_key in cluster_similarities.get('inter', {}):
-                    cluster_data[cid]['similarity_to_target'] = \
-                        cluster_similarities['inter'][inter_key]
 
-
-    # Custom system prompt based on analysis type
     system_prompt = """You are a clustering analysis expert focusing on identifying automation and modularization opportunities.
-Your task is to analyze customer service requests following this structure:
+Analyze customer service requests following this structure:
 
 1. Cluster Quality Insights:
-   - Interpret the silhouette score and what it means for automation potential
-   - Analyze intra-cluster similarity and its implications for reusable design elements
-   - Assess overall cluster coherence and distinctness
-   - Evaluate cluster size and significance
+   - Interpret the silhouette score and implications for automation
+   - Analyze intra-cluster similarity for reusable components
+   - Assess cluster coherence and distinctness
+   - Note: 'gmh' in requests indicates a plant-specific product extension. These are high-value automation candidates as they follow standard patterns
 
 2. Theme Analysis:
-   - Identify specific patterns and recurring elements in customer requests and CAD components
-   - Look for common terminology, formats, and request structures, including CAD file conventions
-   - Analyze complexity and variability in both text-based requests and CAD designs
-   - Note any edge cases or unusual patterns that might affect automation feasibility
+   - Identify specific patterns in requests, particularly noting product extension patterns
+   - For requests containing 'gmh', these represent product extension requests to the GMH plant
+   - Look for variations in how GMH extensions are requested (cost quotes, drawings, specifications)
+   - Note if clusters contain mixed GMH and non-GMH requests, as this may affect automation strategy
+   - Identify common terminology and request structures beyond GMH extensions
+   - Analyze request complexity levels and variations
 
-3. Modularization Opportunities:
-   - Propose specific automation solutions based on identified patterns
-   - Suggest template structures and reusable CAD components to streamline design workflows
-   - Identify potential for standardization in both customer requests and CAD elements (e.g., standard part libraries, predefined templates)
-   - Consider workflow automation possibilities for repetitive CAD tasks, such as parametric modeling, auto-dimensioning, and batch processing
+3. CAD Automation Implications:
+   - Assess modularization potential for CAD libraries and templates
+   - Identify clusters suitable for immediate CAD automation
+   - Suggest clusters that might need further refinement due to design complexity
+   - Consider cross-cluster opportunities for shared CAD components
+   - For GMH-related requests, consider:
+     * Automated product number extension workflows
+     * Template creation for GMH-specific documentation
+     * Integration with existing CAD systems for GMH plant
+     * Standardization opportunities across multiple plants
 
-4. Technical Requirements:
-   - Outline necessary natural language processing (NLP) capabilities for analyzing customer requests
-   - Define CAD software requirements, such as AutoCAD dynamic blocks, SolidWorks configurations, or Revit families
-   - Suggest database and storage requirements for customer service requests and CAD libraries
-   - Consider integration needs with existing CAD, PLM (Product Lifecycle Management), and PDM (Product Data Management) systems
-   - Identify potential technical challenges, such as cross-platform CAD compatibility, automation complexity, and version control issues.
+4. Business Impact Analysis:
+   - Calculate ROI using provided time savings data
+   - Consider both quantitative (time saved) and qualitative benefits
+   - Factor in the reduction in errors from automation
+   - Project long-term efficiency gains
 
-5. Implementation Considerations:
-   - Estimate development complexity, including clustering model training and CAD modularization restructuring
-   - Consider scalability and maintenance, ensuring that automation rules and CAD templates remain adaptable
-   - Suggest phasing and prioritization, focusing on high-impact clusters and frequently used CAD components first
-   - Note potential risks and mitigation strategies, such as data inconsistency, migration issues, and automation edge cases
+5. Technical Requirements:
+   - Define system requirements for automated workflows
+   - Specify database needs for product extensions
+   - Outline integration requirements with existing systems
+   - Consider security and validation requirements
 
-6. Business Impact:
-   - Note cluster size and request volume to prioritize high-frequency automation opportunities
-   - Estimate time savings for both customer service response times and CAD drafting efficiency if available
-   - Describe qualitative benefits (consistency, accuracy, etc.)
-   - Consider customer experience impact, ensuring faster service resolution and more efficient design cycles""" + (
-    "\n\nProvide a detailed analysis focused specifically on this cluster." if cluster_id else
-    "\n\nProvide a comprehensive overview across all clusters."
-)
+6. Implementation Plan:
+   - Prioritize based on time savings and complexity
+   - Suggest phased implementation approach
+   - Identify potential risks and mitigation strategies
+   - Define success metrics and KPIs
 
-    max_retries = 3
-    retry_delay = 1
-    
-    for attempt in range(max_retries):
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"{question_prompt}\n\n"
-                            f"Clustering Method: {method}\n"
-                            f"Silhouette Score: {silhouette:.2f}\n"
-                            f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
-                        )
-                    }
-                ],
-                max_tokens=350,
-                temperature=0.3,
-                timeout=15
-            )
-            gpt_reply = response.choices[0].message.content
-            break
-        except openai.error.RateLimitError:
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))
-                continue
-            gpt_reply = "The analysis service is currently busy. Please try again in a moment."
-        except Exception as e:
-            print(f"GPT API error: {e}")
-            gpt_reply = "Unable to generate analysis at the moment."
-            break
+Always provide complete responses for each section, ensuring business impact is quantified where possible."""
 
-    gpt_cache[cache_key] = gpt_reply
-    return gpt_reply
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{question_prompt}\n\n"
+                        f"Method: {method}\n"
+                        f"Silhouette Score: {silhouette:.2f}\n"
+                        f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
+                        "Note: Pay special attention to product extension requests (e.g., 'gmh') "
+                        "and ensure complete responses for all sections."
+                    )
+                }
+            ],
+            max_tokens=800,  # Increased to ensure complete responses
+            temperature=0.3,
+            timeout=20  # Increased timeout
+        )
+        gpt_reply = response.choices[0].message.content
+        
+        # Verify response completeness
+        if not all(section in gpt_reply.lower() for section in 
+                  ['business impact', 'implementation', 'technical requirements']):
+            gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
+            
+        gpt_cache[cache_key] = gpt_reply
+        return gpt_reply
+        
+    except Exception as e:
+        print(f"GPT API error: {e}")
+        return "Error generating complete analysis. Please try again."
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
@@ -1247,6 +1243,9 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
    - Consider the impact of cluster quality on design accuracy and consistency
    - Assess scalability implications for CAD template libraries
    - Suggest priority areas for implementation based on potential time savings
+   - Total time savings per cluster:
+     * Calculate total minutes saved if the identified modularization opportunity is implemented
+     * Show the time savings calculation from the provided time_savings data
 
 Focus on providing actionable insights that can guide CAD automation and standardization decisions while maintaining design quality and efficiency."""
 
@@ -1267,12 +1266,14 @@ Focus on providing actionable insights that can guide CAD automation and standar
                             f"Silhouette Score: {silhouette:.2f}\n"
                             f"\nIntra-Cluster Similarity:\n{intra_text}\n"
                             f"\nInter-Cluster Similarity:\n{inter_text}\n"
+                            f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
+                            "For business impact, simply calculate and show the total minutes saved per cluster based on the time_savings data."
                         )
                     }
                 ],
-                max_tokens=250,
+                max_tokens=500,
                 temperature=0.3,
-                timeout=15
+                timeout=20
             )
             gpt_reply = response.choices[0].message.content
             break
