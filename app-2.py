@@ -909,6 +909,7 @@ def show_model_analysis_bgmm(
 
 # Global cache to avoid repeated GPT calls:
 gpt_cache = {}
+gpt_cache = {}
 
 def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     """
@@ -1109,6 +1110,7 @@ def generate_gpt_theme_analysis(
                     cluster_data[cid]['similarity_to_target'] = \
                         cluster_similarities['inter'][inter_key]
 
+
     # Custom system prompt based on analysis type
     system_prompt = """You are a clustering analysis expert focusing on identifying automation and modularization opportunities.
 Your task is to analyze customer service requests following this structure:
@@ -1153,29 +1155,40 @@ Your task is to analyze customer service requests following this structure:
     "\n\nProvide a comprehensive overview across all clusters."
 )
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": (
-                        f"{question_prompt}\n\n"
-                        f"Clustering Method: {method}\n"
-                        f"Silhouette Score: {silhouette:.2f}\n"
-                        f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
-                    )
-                }
-            ],
-            max_tokens=350,
-            temperature=0.3,
-            timeout=15
-        )
-        gpt_reply = response.choices[0].message.content
-    except Exception as e:
-        print(f"GPT API error: {e}")
-        gpt_reply = "Unable to generate analysis at the moment."
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"{question_prompt}\n\n"
+                            f"Clustering Method: {method}\n"
+                            f"Silhouette Score: {silhouette:.2f}\n"
+                            f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
+                        )
+                    }
+                ],
+                max_tokens=350,
+                temperature=0.3,
+                timeout=15
+            )
+            gpt_reply = response.choices[0].message.content
+            break
+        except openai.error.RateLimitError:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            gpt_reply = "The analysis service is currently busy. Please try again in a moment."
+        except Exception as e:
+            print(f"GPT API error: {e}")
+            gpt_reply = "Unable to generate analysis at the moment."
+            break
 
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
@@ -1197,138 +1210,148 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     if not intra_sim and not inter_sim:
         return "No similarity scores are available for analysis."
 
-    system_prompt = """You are a clustering analysis expert. Analyze cluster quality and relationships following this detailed structure:
+    system_prompt = """You are a clustering analysis expert specializing in CAD-related customer service requests. Analyze cluster quality and relationships following this detailed structure:
 
 1. Overall Cluster Quality:
-   - Interpret the silhouette score's meaning for cluster separation
-   - Evaluate the strength of cluster boundaries
-   - Assess the overall clustering solution quality
-   - Identify any potential clustering issues or concerns
+   - Interpret the silhouette score's implications for CAD automation potential
+   - Evaluate the strength of cluster boundaries in terms of CAD component categories
+   - Assess the overall clustering solution quality for identifying reusable CAD elements
+   - Identify any potential clustering issues that might affect CAD automation
 
 2. Individual Cluster Analysis:
-   - Analyze the cohesion of each cluster (intra-cluster similarity)
-   - Identify the strongest and weakest clusters
-   - Evaluate cluster sizes and their significance
-   - Note any clusters that might need refinement
+   - Analyze the cohesion of each cluster (intra-cluster similarity) for CAD component standardization
+   - Identify clusters with strong potential for CAD template creation
+   - Evaluate cluster sizes to prioritize automation efforts
+   - Note clusters that might need refinement due to CAD complexity variations
 
 3. Inter-cluster Relationships:
-   - Examine similarities between clusters
-   - Identify any significant cluster overlaps
-   - Note distinctly separated clusters
-   - Analyze the hierarchy or relationships between clusters
+   - Examine similarities between clusters to identify shared CAD elements
+   - Identify overlapping CAD component requirements across clusters
+   - Note distinctly separated design categories
+   - Analyze hierarchical relationships between CAD component types
 
-4. Automation Implications:
-   - Assess modularization potential based on cluster separation
-   - Identify clusters suitable for immediate automation
-   - Suggest clusters that might need further refinement
-   - Consider cross-cluster automation opportunities
+4. CAD Automation Implications:
+   - Assess modularization potential for CAD libraries and templates
+   - Identify clusters suitable for immediate CAD automation
+   - Suggest clusters that might need further refinement due to design complexity
+   - Consider cross-cluster opportunities for shared CAD components
 
-5. Technical Recommendations:
-   - Suggest approaches for handling cluster overlaps
-   - Recommend strategies for borderline cases
-   - Propose validation methods for automated solutions
-   - Consider monitoring and maintenance needs
+5. Technical Implementation Strategy:
+   - Suggest approaches for handling varying CAD complexity levels
+   - Recommend strategies for managing CAD file versions and variations
+   - Propose validation methods for automated CAD solutions
+   - Consider integration requirements with existing CAD/PLM/PDM systems
 
 6. Business Impact Assessment:
-   - Evaluate the reliability of cluster-based automation
-   - Consider the impact of cluster quality on accuracy
-   - Assess scalability implications
-   - Suggest priority areas for implementation
+   - Evaluate the reliability of cluster-based CAD automation
+   - Consider the impact of cluster quality on design accuracy and consistency
+   - Assess scalability implications for CAD template libraries
+   - Suggest priority areas for implementation based on potential time savings
 
-Focus on providing actionable insights that can guide automation and standardization decisions."""
+Focus on providing actionable insights that can guide CAD automation and standardization decisions while maintaining design quality and efficiency."""
 
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Analyze cluster quality metrics:\n\n"
+                            f"Method: {method}\n"
+                            f"Silhouette Score: {silhouette:.2f}\n"
+                            f"\nIntra-Cluster Similarity:\n{intra_text}\n"
+                            f"\nInter-Cluster Similarity:\n{inter_text}\n"
+                        )
+                    }
+                ],
+                max_tokens=250,
+                temperature=0.3,
+                timeout=15
+            )
+            gpt_reply = response.choices[0].message.content
+            break
+        except openai.error.RateLimitError:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            gpt_reply = "The analysis service is currently busy. Please try again in a moment."
+        except Exception as e:
+            print(f"GPT API error: {e}")
+            gpt_reply = "Unable to analyze similarity scores at the moment."
+            break
+
+    gpt_cache[cache_key] = gpt_reply
+    return gpt_reply
+
+
+def cached_gpt_response(user_input: str, method: str, silhouette: float, context: str) -> str:
+    """
+    Generates and caches GPT responses for custom queries.
+    """
+    cache_key = ("custom_query", method, f"{silhouette:.4f}", user_input.lower().strip())
+    
+    if cache_key in gpt_cache:
+        return gpt_cache[cache_key]
+        
     try:
+        system_prompt = """You are a clustering analysis expert. Analyze the provided clustering results
+and answer the user's specific question. Focus on:
+1. Direct relevance to the user's question
+2. Practical implications and actionable insights
+3. Technical accuracy and clarity
+4. Business value and implementation considerations"""
+
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": (
-                        f"Analyze cluster quality metrics:\n\n"
-                        f"Method: {method}\n"
-                        f"Silhouette Score: {silhouette:.2f}\n"
-                        f"\nIntra-Cluster Similarity:\n{intra_text}\n"
-                        f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                    )
+                    "content": f"Question: {user_input}\n\nContext:\n{context}"
                 }
             ],
-            max_tokens=250,
+            max_tokens=300,
             temperature=0.3,
             timeout=15
         )
-        gpt_reply = response.choices[0].message.content
+        answer = response.choices[0].message.content
+        
+        # Cache the raw response without the header
+        gpt_cache[cache_key] = answer
+        return answer
     except Exception as e:
-        print(f"GPT API error: {e}")
-        gpt_reply = "Unable to analyze similarity scores at the moment."
-
-    gpt_cache[cache_key] = gpt_reply
-    return gpt_reply
-
-def chat_interface(data: pd.DataFrame, cluster_results: dict):
-    """
-    Implements an interactive chat interface for analyzing clustering results.
-    """
-    st.header("Ask Questions About the Analysis")
-
-    # Initialize session states
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "last_processed" not in st.session_state:
-        st.session_state.last_processed = set()
-
-    chat_container = st.container()
-    
-    # Display existing chat history
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-
-    # Text input
-    user_input = st.text_input(
-        "Ask about these clustering results:",
-        key="user_input",
-        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
-    )
-
-    # Process new input
-    if user_input and user_input not in st.session_state.last_processed:
-        with chat_container:
-            with st.chat_message("user"):
-                st.write(user_input)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Analyzing..."):
-                    try:
-                        response = analyze_and_respond(user_input, data, cluster_results)
-                        st.write(response)
-                        
-                        st.session_state.messages.extend([
-                            {"role": "user", "content": user_input},
-                            {"role": "assistant", "content": response}
-                        ])
-                        st.session_state.last_processed.add(user_input)
-                        
-                    except Exception as e:
-                        st.error("I apologize, but I encountered an error. Please try again.")
-                        print(f"Error in chat interface: {str(e)}")
+        print(f"Error in cached_gpt_response: {e}")
+        return "I apologize, but I'm having trouble generating a response. Please try rephrasing your question."
 
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
     Main dispatcher for handling user questions about clustering results.
     """
     try:
-        # Get cached or generate new response
-        response = get_cached_response(user_input, cluster_results)
-        if response:
-            return response
+        # Get method info for header
+        method = cluster_results['method']
+        parameters = cluster_results['parameters']
+        silhouette = cluster_results['silhouette']
+        
+        # Create method header
+        method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
-        # If no specific handler caught it, return a generic response
-        return (
-            "I'm not sure I understand your question. Could you try rephrasing it? "
-            "You can ask about main insights, specific clusters, similarities, or time savings."
-        )
+        # First try to get a cached response
+        cached_answer = get_cached_response(user_input, cluster_results)
+        if cached_answer:
+            return method_header + cached_answer
+
+        # If no cached response, generate new one with GPT
+        context = json.dumps(cluster_results, indent=2)
+        gpt_response = cached_gpt_response(user_input, method, silhouette, context)
+        
+        return method_header + gpt_response
 
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
