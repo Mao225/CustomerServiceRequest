@@ -1119,8 +1119,9 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
     )
 
     # Process new input with rate limiting
-    if user_input and user_input != st.session_state.get("last_user_input", ""):
+    if user_input:
         response = analyze_and_respond(user_input, data, cluster_results)
+        st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
 
@@ -1291,8 +1292,6 @@ def generate_gpt_theme_analysis_for_cluster(requests, cluster_id):
         }
 
 
-
-
 def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_similarities,
                                time_savings, method_model1, param_display, silhouette_for_summary):
     E_list, L_list = [], []
@@ -1363,6 +1362,12 @@ def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_
                         'confidence': confidence
                     }
 
+      if 'Chat_interface' in global():
+          print("chat_interfce() is defined!!)
+      else:
+         print("chat_interface() is not defined")
+                
+        
         # Initialize the chat interface
         chat_interface(
             data=valid_df,
