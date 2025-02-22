@@ -1014,6 +1014,30 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     # If none of the above matched, return None so we can do a generic GPT call
     return None
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def cached_gpt_response(input_text: str, method: str, silhouette: float, context: str) -> str:
+    """Cached wrapper for GPT API calls"""
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a clustering analysis expert. Provide concise answers about the clustering results."
+                },
+                {
+                    "role": "user",
+                    "content": f"Question: {input_text}\nContext: {context}\nRespond in 2-3 sentences with specific metrics when possible."
+                }
+            ],
+            max_tokens=150,
+            temperature=0.2,
+            timeout=15
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"GPT API error: {str(e)}")
+        return "I apologize, but I encountered an error while analyzing. Please try again."
 
 def generate_gpt_theme_analysis(
     cluster_patterns, method, silhouette, cluster_similarities, cluster_id=None
@@ -1023,7 +1047,6 @@ def generate_gpt_theme_analysis(
     Uses caching to avoid repeat API calls.
     """
     # Build a unique key for the GPT call itself
-    # If cluster_id is None, it's an "overall" request
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
 
     # If we already have a GPT answer for this exact method + silhouette + cluster ID, return it
@@ -1032,7 +1055,6 @@ def generate_gpt_theme_analysis(
 
     # Prepare data to feed GPT
     if cluster_id is None:
-        # Summarize all clusters
         question_prompt = "Analyze the customer request clusters for modularization opportunities."
         selected_clusters = cluster_patterns
     else:
@@ -1056,11 +1078,13 @@ def generate_gpt_theme_analysis(
         gpt_cache[cache_key] = result
         return result
 
-    # Send the prompt to GPT
-    messages = [
-        {
-            "role": "system",
-            "content": """You are a customer service analytics expert focusing on identifying modularization opportunities.
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """You are a customer service analytics expert focusing on identifying modularization opportunities.
 Your task is to analyze customer service requests and identify patterns that could be turned into reusable components 
 or automated solutions. Consider both technical feasibility and business impact.
 
@@ -1081,34 +1105,29 @@ Guidelines for analysis:
    - Guided workflows
    - Reusable components
    - Knowledge base articles"""
-        },
-        {
-            "role": "user",
-            "content": (
-                f"{question_prompt}\n\n"
-                f"Clustering Method: {method}\n"
-                f"Silhouette Score: {silhouette:.2f}\n"
-                f"Cluster Data:\n{json.dumps(cluster_requests, indent=2)}\n"
-                f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n\n"
-                "Please provide a structured analysis including:\n"
-                "1. Key Patterns: Identify common themes and request patterns\n"
-                "2. Modularization Opportunities: For each identified pattern:\n"
-                "   - Technical feasibility rating\n"
-                "   - Business impact assessment\n"
-                "   - Implementation complexity\n"
-                "3. Recommendations: Specific suggestions for implementation\n"
-                "4. Priority: High/Medium/Low based on feasibility and impact"
-            )
-        }
-    ]
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=messages,
-            max_tokens=350,  # Increased for more detailed analysis
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"{question_prompt}\n\n"
+                        f"Clustering Method: {method}\n"
+                        f"Silhouette Score: {silhouette:.2f}\n"
+                        f"Cluster Data:\n{json.dumps(cluster_requests, indent=2)}\n"
+                        f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n\n"
+                        "Please provide a structured analysis including:\n"
+                        "1. Key Patterns: Identify common themes and request patterns\n"
+                        "2. Modularization Opportunities: For each identified pattern:\n"
+                        "   - Technical feasibility rating\n"
+                        "   - Business impact assessment\n"
+                        "   - Implementation complexity\n"
+                        "3. Recommendations: Specific suggestions for implementation\n"
+                        "4. Priority: High/Medium/Low based on feasibility and impact"
+                    )
+                }
+            ],
+            max_tokens=350,
             temperature=0.3,
-            timeout=10
+            timeout=15
         )
         gpt_reply = response.choices[0].message.content
     except Exception as e:
@@ -1122,18 +1141,16 @@ Guidelines for analysis:
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
     Dynamically calls GPT to analyze cluster similarity.
-    We also use gpt_cache to avoid repeat calls for the same method & silhouette.
+    Uses gpt_cache to avoid repeat calls for the same method & silhouette.
     """
     cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
 
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Extract data
+    # Extract and format data
     intra_sim = cluster_similarities.get('intra', {})
     inter_sim = cluster_similarities.get('inter', {})
-
-    # Format them for display
     intra_text = "\n".join([f"Cluster {k}: {v:.2f}" for k, v in intra_sim.items()])
     inter_text = "\n".join([f"Clusters {k}: {v:.2f}" for k, v in inter_sim.items()])
 
@@ -1142,32 +1159,29 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
 
-    # GPT prompt
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a clustering analysis expert. Summarize the cluster similarities and cohesion."
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Analyze the cluster similarities:\n\n"
-                f"Clustering Method: {method}\n"
-                f"Silhouette Score: {silhouette:.2f}\n"
-                f"\nIntra-Cluster Similarity:\n{intra_text}\n"
-                f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                "Which clusters are most cohesive, and which are overlapping?"
-            )
-        }
-    ]
-
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
-            messages=messages,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a clustering analysis expert. Summarize the cluster similarities and cohesion."
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Analyze the cluster similarities:\n\n"
+                        f"Clustering Method: {method}\n"
+                        f"Silhouette Score: {silhouette:.2f}\n"
+                        f"\nIntra-Cluster Similarity:\n{intra_text}\n"
+                        f"\nInter-Cluster Similarity:\n{inter_text}\n"
+                        "Which clusters are most cohesive, and which are overlapping?"
+                    )
+                }
+            ],
             max_tokens=250,
             temperature=0.3,
-            timeout=10
+            timeout=15
         )
         gpt_reply = response.choices[0].message.content
     except Exception as e:
@@ -1178,56 +1192,24 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
 
-
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
-    """
-    Main dispatcher that tries a 'cached' or known response, 
-    otherwise calls GPT with a generic summary prompt.
-    """
-
-    # First see if we have a known or 'cached' response
-    cached_answer = get_cached_response(user_input, cluster_results)
-    if cached_answer:
-        return cached_answer
-
-    # If not recognized, do a generic GPT call
-    # We'll also cache based on user input + method + silhouette
-    method = cluster_results['method']
-    silhouette = cluster_results['silhouette']
-    cache_key = ("generic_question", method, f"{silhouette:.4f}", user_input.lower().strip())
-
-    if cache_key in gpt_cache:
-        return gpt_cache[cache_key]
-
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a clustering analysis expert. Provide concise answers about the clustering results."
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Question: {user_input}\n"
-                f"Context: {json.dumps(cluster_results, indent=None)}\n"
-                "Respond in 2-3 sentences with specific metrics when possible."
-            )
-        }
-    ]
+    """Main dispatcher for handling user questions"""
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=messages,
-            max_tokens=150,
-            temperature=0.2,
-            timeout=10
-        )
-        reply_text = response.choices[0].message.content
-    except Exception as e:
-        print(f"GPT API error: {e}")
-        reply_text = "I'm having trouble analyzing that. Please try again later."
+        # First try to get a cached response
+        cached_answer = get_cached_response(user_input, cluster_results)
+        if cached_answer:
+            return cached_answer
 
-    gpt_cache[cache_key] = reply_text
-    return reply_text
+        # If no cached response, generate new one
+        method = cluster_results['method']
+        silhouette = cluster_results['silhouette']
+        context = json.dumps(cluster_results, indent=None)
+        
+        return cached_gpt_response(user_input, method, silhouette, context)
+
+    except Exception as e:
+        print(f"Error in analyze_and_respond: {str(e)}")
+        return "I apologize, but I encountered an error while analyzing. Please try again."
 
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
@@ -1237,30 +1219,56 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
     """
     st.header("Ask Questions About the Analysis")
 
-    # Initialize session state for storing messages
+    # Initialize session state for messages and input tracking
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "current_question" not in st.session_state:
+        st.session_state.current_question = None
 
-    # Display existing chat history
-    for message in st.session_state.messages:
-        if message['role'] == 'user':
-            st.markdown(f"**You:** {message['content']}")
-        else:
-            st.markdown(f"**Assistant:** {message['content']}")
+    # Create a container for chat history
+    chat_container = st.container()
+    
+    # Display chat history
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
 
-    # Let the user type a new question
+    # Text input at the bottom
     user_input = st.text_input(
         "Ask about these clustering results:",
         key="user_input",
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
 
-    # If user enters text, get an answer and update chat
-    if user_input:
-        response = analyze_and_respond(user_input, data, cluster_results)
-        # Add both user prompt and GPT answer to the conversation
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        st.session_state.messages.append({"role": "assistant", "content": response})
+    # Process new input
+    if user_input and user_input != st.session_state.current_question:
+        # Update current question to prevent duplicate processing
+        st.session_state.current_question = user_input
+        
+        # Display user message
+        with chat_container:
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            # Generate and display response with loading indicator
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing..."):
+                    try:
+                        response = analyze_and_respond(user_input, data, cluster_results)
+                        st.write(response)
+                        
+                        # Update session state only after successful response
+                        st.session_state.messages.append({"role": "user", "content": user_input})
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        
+                    except Exception as e:
+                        error_msg = "I apologize, but I encountered an error. Please try again."
+                        st.error(error_msg)
+                        print(f"Error in chat interface: {str(e)}")  # For debugging
+        
+        # Force a rerun to clear the input field
+        st.rerun()
 
 # ==================== 11) Process Functions for Each Method ====================
 
