@@ -1290,6 +1290,69 @@ Focus on providing actionable insights that can guide CAD automation and standar
     return gpt_reply
 
 
+def chat_interface(data: pd.DataFrame, cluster_results: dict):
+    """
+    Implements an interactive chat interface for analyzing clustering results.
+    """
+    st.header("Ask Questions About the Analysis")
+
+    # Initialize session states
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "last_processed" not in st.session_state:
+        st.session_state.last_processed = set()
+
+    chat_container = st.container()
+    
+    # Display existing chat history
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                # Use markdown for assistant messages to properly format the method header
+                if message["role"] == "assistant":
+                    st.markdown(message["content"])
+                else:
+                    st.write(message["content"])
+
+    # Text input
+    user_input = st.text_input(
+        "Ask about these clustering results:",
+        key="user_input",
+        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+    )
+
+    # Process new input
+    if user_input and user_input not in st.session_state.last_processed:
+        with chat_container:
+            # Display user message
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            # Process and display assistant response
+            with st.chat_message("assistant"):
+                with st.status("Analyzing...", expanded=False) as status:
+                    try:
+                        # Process response without showing technical details
+                        response = analyze_and_respond(user_input, data, cluster_results)
+                        status.update(label="Analysis complete!", state="complete")
+                        
+                        # Show the response using markdown
+                        st.markdown(response)
+                        
+                        # Update conversation history
+                        st.session_state.messages.extend([
+                            {"role": "user", "content": user_input},
+                            {"role": "assistant", "content": response}
+                        ])
+                        st.session_state.last_processed.add(user_input)
+                        
+                    except Exception as e:
+                        status.update(label="Analysis failed", state="error")
+                        st.error("I apologize, but I encountered an error. Please try again.")
+                        print(f"Error in chat interface: {str(e)}")
+
+
+
 def cached_gpt_response(user_input: str, method: str, silhouette: float, context: str) -> str:
     """
     Generates and caches GPT responses for custom queries.
