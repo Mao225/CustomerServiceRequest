@@ -1210,7 +1210,54 @@ def process_bgmm(data, mat, emb_valid):
     return "BGMM_Model", f"(K={best_k})" if best_k else "", silhouette_for_summary
 
 
+
 # ==================== 12) Process Clustering Results for Chat Interface ====================
+
+def generate_gpt_theme_analysis_for_cluster(requests, cluster_id):
+    """Dynamically calls GPT to analyze themes for a specific cluster."""
+
+    if not requests:
+        return {
+            "primary_topic": "Unknown",
+            "request_type": "Unknown",
+            "complexity": "Unknown"
+        }
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a customer service analytics expert. Identify key themes from customer requests."
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Analyze the themes in these customer requests for Cluster {cluster_id}:\n\n"
+                f"{json.dumps(requests)}\n\n"
+                "Summarize the primary topics, request types, and complexity levels."
+            )
+        }
+    ]
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=messages,
+            max_tokens=250,
+            temperature=0.3,
+            timeout=10
+        )
+        return response.choices[0].message.content
+
+    except Exception as e:
+        print(f"GPT API error: {str(e)}")
+        return {
+            "primary_topic": "Unknown",
+            "request_type": "Unknown",
+            "complexity": "Unknown"
+        }
+
+
+
 
 def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_similarities,
                                time_savings, method_model1, param_display, silhouette_for_summary):
@@ -1258,7 +1305,7 @@ def process_clustering_results(valid_df, cluster_col, cluster_patterns, cluster_
         for cluster_id, requests in reps.items():
             if cluster_id != -1:  # Skip noise points
                 size_percentage = (cluster_sizes.get(cluster_id, 0) / total_requests) * 100
-                themes = analyze_request_themes(requests)
+                themes = generate_gpt_theme_analysis_for_cluster(requests, cluster_id)
                 cluster_id_str = str(int(cluster_id))
                 cluster_patterns[cluster_id_str] = {
                     'size_percentage': size_percentage,
