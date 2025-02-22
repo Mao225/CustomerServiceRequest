@@ -4,7 +4,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import openai  # pinned to e.g. openai==0.28
+import openai  # openai==0.28
+import time
 import json
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
