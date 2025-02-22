@@ -1015,30 +1015,6 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     return None
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def cached_gpt_response(input_text: str, method: str, silhouette: float, context: str) -> str:
-    """Cached wrapper for GPT API calls"""
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a clustering analysis expert. Provide concise answers about the clustering results."
-                },
-                {
-                    "role": "user",
-                    "content": f"Question: {input_text}\nContext: {context}\nRespond in 2-3 sentences with specific metrics when possible."
-                }
-            ],
-            max_tokens=150,
-            temperature=0.2,
-            timeout=15
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"GPT API error: {str(e)}")
-        return "I apologize, but I encountered an error while analyzing. Please try again."
-
 def generate_gpt_theme_analysis(
     cluster_patterns, method, silhouette, cluster_similarities, cluster_id=None
 ):
@@ -1046,22 +1022,20 @@ def generate_gpt_theme_analysis(
     Dynamically calls GPT to generate theme insights and modularization opportunities.
     Uses caching to avoid repeat API calls.
     """
-    # Build a unique key for the GPT call itself
+    # Build unique cache key
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
-
-    # If we already have a GPT answer for this exact method + silhouette + cluster ID, return it
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Prepare data to feed GPT
+    # Prepare data for GPT
     if cluster_id is None:
-        question_prompt = "Analyze the customer request clusters for modularization opportunities."
+        question_prompt = "Analyze the clusters for insights and modularization opportunities."
         selected_clusters = cluster_patterns
     else:
         question_prompt = f"Analyze Cluster {cluster_id} for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
-    # Gather request text from each cluster
+    # Gather cluster data
     cluster_requests = {}
     cluster_metrics = {}
     for cid, info in selected_clusters.items():
@@ -1069,7 +1043,6 @@ def generate_gpt_theme_analysis(
             cluster_requests[cid] = info.get('requests', [])
             cluster_metrics[cid] = {
                 'size_percentage': info.get('size_percentage', 0),
-                'automation_potential': info.get('automation_potential', 'low'),
                 'intra_similarity': cluster_similarities.get('intra', {}).get(str(cid), 0)
             }
 
@@ -1078,34 +1051,35 @@ def generate_gpt_theme_analysis(
         gpt_cache[cache_key] = result
         return result
 
+    # Updated system prompt for better analysis structure
+    system_prompt = """You are a clustering analysis expert focusing on identifying automation and modularization opportunities.
+Your task is to analyze customer service requests following this structure:
+
+1. Cluster Quality Insights:
+   - Interpret the silhouette score and what it means for automation potential
+   - Analyze intra-cluster similarity and its implications
+   - Assess overall cluster coherence and distinctness
+
+2. Theme Analysis:
+   - Identify specific patterns and themes from the representative requests
+   - Look for repeatable elements that could be standardized
+   - Note any variations that might need special handling
+
+3. Modularization Opportunities:
+   - Propose practical automation solutions based on identified patterns
+   - Consider technical requirements for implementation
+   - Suggest specific steps or components to modularize
+
+4. Business Impact:
+   - Note cluster size (percentage of total requests)
+   - Include time savings estimates if available
+   - Describe qualitative benefits (consistency, accuracy, etc.)"""
+
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {
-                    "role": "system",
-                    "content": """You are a customer service analytics expert focusing on identifying modularization opportunities.
-Your task is to analyze customer service requests and identify patterns that could be turned into reusable components 
-or automated solutions. Consider both technical feasibility and business impact.
-
-Guidelines for analysis:
-1. Technical Feasibility Levels (based on intra-cluster similarity):
-   - High (>0.7): Strong candidate for automation
-   - Medium (0.5-0.7): Partial automation possible
-   - Low (<0.5): Requires significant human oversight
-
-2. Impact Assessment:
-   - Consider cluster size percentage
-   - Evaluate complexity of implementation
-   - Assess potential time savings
-
-3. Types of Opportunities:
-   - Full automation of responses
-   - Templated solutions
-   - Guided workflows
-   - Reusable components
-   - Knowledge base articles"""
-                },
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": (
@@ -1113,15 +1087,7 @@ Guidelines for analysis:
                         f"Clustering Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
                         f"Cluster Data:\n{json.dumps(cluster_requests, indent=2)}\n"
-                        f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n\n"
-                        "Please provide a structured analysis including:\n"
-                        "1. Key Patterns: Identify common themes and request patterns\n"
-                        "2. Modularization Opportunities: For each identified pattern:\n"
-                        "   - Technical feasibility rating\n"
-                        "   - Business impact assessment\n"
-                        "   - Implementation complexity\n"
-                        "3. Recommendations: Specific suggestions for implementation\n"
-                        "4. Priority: High/Medium/Low based on feasibility and impact"
+                        f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n"
                     )
                 }
             ],
@@ -1134,13 +1100,12 @@ Guidelines for analysis:
         print(f"GPT API error: {e}")
         gpt_reply = "I'm unable to generate theme insights at the moment. Please try again later."
 
-    # Cache and return
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
-    Dynamically calls GPT to analyze cluster similarity.
+    Dynamically calls GPT to analyze cluster similarity and quality metrics.
     Uses gpt_cache to avoid repeat calls for the same method & silhouette.
     """
     cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
@@ -1155,27 +1120,43 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     inter_text = "\n".join([f"Clusters {k}: {v:.2f}" for k, v in inter_sim.items()])
 
     if not intra_sim and not inter_sim:
-        gpt_reply = "No similarity scores are available."
+        gpt_reply = "No similarity scores are available for analysis."
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
+
+    system_prompt = """You are a clustering analysis expert. Analyze cluster quality and relationships following this structure:
+
+1. Overall Cluster Quality:
+   - Interpret the silhouette score's meaning for cluster separation
+   - Explain what this suggests about the overall clustering quality
+   - Indicate what this means for automation potential
+
+2. Individual Cluster Analysis:
+   - Identify the most cohesive clusters (highest intra-cluster similarity)
+   - Point out clusters with lower cohesion
+   - Explain implications for standardization/automation
+
+3. Cluster Relationships:
+   - Note any significant cluster overlaps (high inter-cluster similarity)
+   - Identify distinctly separated clusters
+   - Suggest which clusters might benefit from similar automation approaches
+
+Keep the analysis focused on practical implications for automation and standardization opportunities."""
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are a clustering analysis expert. Summarize the cluster similarities and cohesion."
-                },
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": (
-                        f"Analyze the cluster similarities:\n\n"
+                        f"Analyze the cluster quality metrics:\n\n"
                         f"Clustering Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
-                        f"\nIntra-Cluster Similarity:\n{intra_text}\n"
-                        f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                        "Which clusters are most cohesive, and which are overlapping?"
+                        f"\nIntra-Cluster Similarity (cohesion within clusters):\n{intra_text}\n"
+                        f"\nInter-Cluster Similarity (overlap between clusters):\n{inter_text}\n"
+                        "\nProvide insights about cluster quality and implications for automation."
                     )
                 }
             ],
@@ -1188,7 +1169,6 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
         print(f"GPT API error: {e}")
         gpt_reply = "I'm unable to analyze similarity scores at the moment."
 
-    # Cache and return
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
 
