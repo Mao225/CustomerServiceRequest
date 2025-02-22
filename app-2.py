@@ -951,7 +951,7 @@ def analyze_request_themes(requests: list) -> dict:
         }
 
     # Only analyze first 3 requests to save tokens
-    sample_requests = requests[:3]
+    sample_requests = requests[:5] # changed to all 5 requests
     
     messages = [
         {
