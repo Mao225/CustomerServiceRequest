@@ -906,58 +906,85 @@ def show_model_analysis_bgmm(
 
 
 # ==================== 10) Dynamic Chat Interface for Analysis Results ====================
+
 # Global cache to avoid repeated GPT calls:
 gpt_cache = {}
 
 def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     """
-    Handles common or repeated questions with 'cached' logic. 
-    If it recognizes the question, it calls GPT for theme or similarity and caches the result.
-    Includes specific handling for modularization and automation queries.
+    Enhanced caching system that properly distinguishes between different types of queries.
+    Returns cached responses when available, generates new ones when needed.
     """
-    # Make a simple key from the user's question + clustering method + silhouette
     method = cluster_results['method']
     silhouette = cluster_results['silhouette']
-    cache_key = ("common_question", method, f"{silhouette:.4f}", question.lower().strip())
-
-    # If we've already handled this exact question on this exact method + silhouette, return it
-    if cache_key in gpt_cache:
-        return gpt_cache[cache_key]
-
-    question_lower = question.lower().strip('?!., ')
-    cluster_patterns = cluster_results['patterns']
-    cluster_similarities = cluster_results['similarities']
-
-    # Check for modularization/automation related questions
-    if any(phrase in question_lower for phrase in [
-        "modularization", "automation", "opportunity", "opportunities",
-        "automate", "improve", "efficiency", "module", "reusable",
-        "template", "workflow", "process", "standardize"
-    ]):
-        response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities)
-        gpt_cache[cache_key] = response
-        return response
-
-    # If user asks for "main insights" or something similar, call GPT theme analysis
-    if any(phrase in question_lower for phrase in [
-        "main insight", "main insights", "key insight", "overview", 
-        "summary", "analyze", "analysis", "theme", "pattern"
-    ]):
-        response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities)
-        gpt_cache[cache_key] = response
-        return response
     
-    # If user asks about "similarity" or cohesion
-    if any(phrase in question_lower for phrase in [
+    # First check if it's a cluster-specific question
+    cluster_match = re.search(r"cluster\s+(\d+)", question.lower())
+    if cluster_match:
+        cluster_id = cluster_match.group(1)
+        if any(phrase in question.lower() for phrase in [
+            "modularization", "automation", "opportunity", "opportunities",
+            "automate", "improve", "efficiency", "module", "reusable",
+            "template", "workflow", "process", "standardize"
+        ]):
+            cache_key = ("cluster_automation", method, f"{silhouette:.4f}", cluster_id)
+        else:
+            cache_key = ("cluster_analysis", method, f"{silhouette:.4f}", cluster_id)
+            
+        if cache_key in gpt_cache:
+            return gpt_cache[cache_key]
+            
+        response = generate_gpt_theme_analysis(
+            cluster_results['patterns'], 
+            method, 
+            silhouette, 
+            cluster_results['similarities'],
+            cluster_id
+        )
+        gpt_cache[cache_key] = response
+        return response
+
+    # Check for similarity analysis questions
+    if any(phrase in question.lower() for phrase in [
         "similarity", "cohesion", "coherence", "related", "relationship",
         "connection", "overlap", "distance"
     ]):
-        response = generate_gpt_similarity_analysis(cluster_similarities, method, silhouette)
+        cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
+        if cache_key in gpt_cache:
+            return gpt_cache[cache_key]
+            
+        response = generate_gpt_similarity_analysis(
+            cluster_results['similarities'],
+            method,
+            silhouette
+        )
         gpt_cache[cache_key] = response
         return response
 
-    # If user asks about silhouette score
-    if any(phrase in question_lower for phrase in ["silhouette", "quality", "validation", "score"]):
+    # Check for general insights/analysis questions
+    if any(phrase in question.lower() for phrase in [
+        "main insight", "main insights", "key insight", "overview", 
+        "summary", "analyze", "analysis", "theme", "pattern"
+    ]):
+        cache_key = ("general_insights", method, f"{silhouette:.4f}")
+        if cache_key in gpt_cache:
+            return gpt_cache[cache_key]
+            
+        response = generate_gpt_theme_analysis(
+            cluster_results['patterns'], 
+            method, 
+            silhouette, 
+            cluster_results['similarities']
+        )
+        gpt_cache[cache_key] = response
+        return response
+
+    # Handle silhouette score questions
+    if any(phrase in question.lower() for phrase in ["silhouette", "quality", "validation", "score"]):
+        cache_key = ("quality_analysis", method, f"{silhouette:.4f}")
+        if cache_key in gpt_cache:
+            return gpt_cache[cache_key]
+            
         interpretation = (
             "excellent" if silhouette > 0.7
             else "good" if silhouette > 0.5
@@ -984,17 +1011,12 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         gpt_cache[cache_key] = response
         return response
 
-    # If user specifically asks about a specific cluster
-    import re
-    match = re.search(r"cluster\s+(\d+)", question_lower)
-    if match:
-        cluster_id = match.group(1)
-        response = generate_gpt_theme_analysis(cluster_patterns, method, silhouette, cluster_similarities, cluster_id)
-        gpt_cache[cache_key] = response
-        return response
-
-    # If user asks about time savings
-    if any(phrase in question_lower for phrase in ["time", "saving", "efficiency", "ROI", "benefit"]):
+    # Handle time savings questions
+    if any(phrase in question.lower() for phrase in ["time", "saving", "efficiency", "ROI", "benefit"]):
+        cache_key = ("time_analysis", method, f"{silhouette:.4f}")
+        if cache_key in gpt_cache:
+            return gpt_cache[cache_key]
+            
         time_savings = cluster_results.get('time_savings', {})
         if time_savings:
             total_minutes = sum(cluster['minutes'] for cluster in time_savings.values())
@@ -1011,16 +1033,52 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
             gpt_cache[cache_key] = response
             return response
 
-    # If none of the above matched, return None so we can do a generic GPT call
-    return None
+    # If no specific pattern matched, generate a new custom response
+    cache_key = ("custom_analysis", method, f"{silhouette:.4f}", question.lower().strip())
+    if cache_key in gpt_cache:
+        return gpt_cache[cache_key]
+        
+    # Generate custom response based on context
+    try:
+        system_prompt = """You are a clustering analysis expert. Analyze the clustering results
+and provide insights relevant to the user's specific question. Focus on practical implications
+and actionable recommendations."""
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question: {question}\n\n"
+                        f"Clustering Method: {method}\n"
+                        f"Silhouette Score: {silhouette:.2f}\n"
+                        f"Cluster Patterns:\n{json.dumps(cluster_results['patterns'], indent=2)}\n"
+                        f"Cluster Similarities:\n{json.dumps(cluster_results['similarities'], indent=2)}\n"
+                    )
+                }
+            ],
+            max_tokens=250,
+            temperature=0.3,
+            timeout=15
+        )
+        custom_response = response.choices[0].message.content
+        gpt_cache[cache_key] = custom_response
+        return custom_response
+    except Exception as e:
+        print(f"Error generating custom response: {e}")
+        return "I apologize, but I'm having trouble generating a specific response to that question. Could you try rephrasing it?"
+
 def generate_gpt_theme_analysis(
-    cluster_patterns, method, silhouette, cluster_similarities, cluster_id=None
+    cluster_patterns, 
+    method, 
+    silhouette, 
+    cluster_similarities, 
+    cluster_id=None
 ):
     """
-    Dynamically calls GPT to generate theme insights and modularization opportunities.
-    Uses caching to avoid repeat API calls.
+    Generate themed analysis for either a specific cluster or all clusters.
     """
     # Build unique cache key
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
@@ -1029,51 +1087,71 @@ def generate_gpt_theme_analysis(
 
     # Prepare data for GPT
     if cluster_id is None:
-        question_prompt = "Analyze the clusters for insights and modularization opportunities."
+        question_prompt = "Analyze all clusters for insights and modularization opportunities."
         selected_clusters = cluster_patterns
     else:
-        question_prompt = f"Analyze Cluster {cluster_id} for modularization opportunities."
+        question_prompt = f"Analyze Cluster {cluster_id} specifically for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
     # Gather cluster data
-    cluster_requests = {}
-    cluster_metrics = {}
+    cluster_data = {}
     for cid, info in selected_clusters.items():
         if isinstance(info, dict):
-            cluster_requests[cid] = info.get('requests', [])
-            cluster_metrics[cid] = {
+            cluster_data[cid] = {
+                'requests': info.get('requests', []),
                 'size_percentage': info.get('size_percentage', 0),
                 'intra_similarity': cluster_similarities.get('intra', {}).get(str(cid), 0)
             }
+            # Add inter-cluster similarities if relevant
+            if cluster_id is not None:
+                inter_key = f"{cluster_id}-{cid}"
+                if inter_key in cluster_similarities.get('inter', {}):
+                    cluster_data[cid]['similarity_to_target'] = \
+                        cluster_similarities['inter'][inter_key]
 
-    if not any(cluster_requests.values()):
-        result = "No meaningful insights can be extracted because no request samples are available."
-        gpt_cache[cache_key] = result
-        return result
-
-    # Updated system prompt for better analysis structure
+    # Custom system prompt based on analysis type
     system_prompt = """You are a clustering analysis expert focusing on identifying automation and modularization opportunities.
 Your task is to analyze customer service requests following this structure:
 
 1. Cluster Quality Insights:
    - Interpret the silhouette score and what it means for automation potential
-   - Analyze intra-cluster similarity and its implications
+   - Analyze intra-cluster similarity and its implications for reusable design elements
    - Assess overall cluster coherence and distinctness
+   - Evaluate cluster size and significance
 
 2. Theme Analysis:
-   - Identify specific patterns and themes from the representative requests
-   - Look for repeatable elements that could be standardized
-   - Note any variations that might need special handling
+   - Identify specific patterns and recurring elements in customer requests and CAD components
+   - Look for common terminology, formats, and request structures, including CAD file conventions
+   - Analyze complexity and variability in both text-based requests and CAD designs
+   - Note any edge cases or unusual patterns that might affect automation feasibility
 
 3. Modularization Opportunities:
-   - Propose practical automation solutions based on identified patterns
-   - Consider technical requirements for implementation
-   - Suggest specific steps or components to modularize
+   - Propose specific automation solutions based on identified patterns
+   - Suggest template structures and reusable CAD components to streamline design workflows
+   - Identify potential for standardization in both customer requests and CAD elements (e.g., standard part libraries, predefined templates)
+   - Consider workflow automation possibilities for repetitive CAD tasks, such as parametric modeling, auto-dimensioning, and batch processing
 
-4. Business Impact:
-   - Note cluster size (percentage of total requests)
-   - Include time savings estimates if available
-   - Describe qualitative benefits (consistency, accuracy, etc.)"""
+4. Technical Requirements:
+   - Outline necessary natural language processing (NLP) capabilities for analyzing customer requests
+   - Define CAD software requirements, such as AutoCAD dynamic blocks, SolidWorks configurations, or Revit families
+   - Suggest database and storage requirements for customer service requests and CAD libraries
+   - Consider integration needs with existing CAD, PLM (Product Lifecycle Management), and PDM (Product Data Management) systems
+   - Identify potential technical challenges, such as cross-platform CAD compatibility, automation complexity, and version control issues.
+
+5. Implementation Considerations:
+   - Estimate development complexity, including clustering model training and CAD modularization restructuring
+   - Consider scalability and maintenance, ensuring that automation rules and CAD templates remain adaptable
+   - Suggest phasing and prioritization, focusing on high-impact clusters and frequently used CAD components first
+   - Note potential risks and mitigation strategies, such as data inconsistency, migration issues, and automation edge cases
+
+6. Business Impact:
+   - Note cluster size and request volume to prioritize high-frequency automation opportunities
+   - Estimate time savings for both customer service response times and CAD drafting efficiency if available
+   - Describe qualitative benefits (consistency, accuracy, etc.)
+   - Consider customer experience impact, ensuring faster service resolution and more efficient design cycles""" + (
+    "\n\nProvide a detailed analysis focused specifically on this cluster." if cluster_id else
+    "\n\nProvide a comprehensive overview across all clusters."
+)
 
     try:
         response = openai.ChatCompletion.create(
@@ -1086,8 +1164,7 @@ Your task is to analyze customer service requests following this structure:
                         f"{question_prompt}\n\n"
                         f"Clustering Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
-                        f"Cluster Data:\n{json.dumps(cluster_requests, indent=2)}\n"
-                        f"Cluster Metrics:\n{json.dumps(cluster_metrics, indent=2)}\n"
+                        f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
                     )
                 }
             ],
@@ -1098,50 +1175,67 @@ Your task is to analyze customer service requests following this structure:
         gpt_reply = response.choices[0].message.content
     except Exception as e:
         print(f"GPT API error: {e}")
-        gpt_reply = "I'm unable to generate theme insights at the moment. Please try again later."
+        gpt_reply = "Unable to generate analysis at the moment."
 
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
-    Dynamically calls GPT to analyze cluster similarity and quality metrics.
-    Uses gpt_cache to avoid repeat calls for the same method & silhouette.
+    Generate analysis of cluster similarity and quality metrics.
     """
     cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
-
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Extract and format data
+    # Extract and format similarity data
     intra_sim = cluster_similarities.get('intra', {})
     inter_sim = cluster_similarities.get('inter', {})
     intra_text = "\n".join([f"Cluster {k}: {v:.2f}" for k, v in intra_sim.items()])
     inter_text = "\n".join([f"Clusters {k}: {v:.2f}" for k, v in inter_sim.items()])
 
     if not intra_sim and not inter_sim:
-        gpt_reply = "No similarity scores are available for analysis."
-        gpt_cache[cache_key] = gpt_reply
-        return gpt_reply
+        return "No similarity scores are available for analysis."
 
-    system_prompt = """You are a clustering analysis expert. Analyze cluster quality and relationships following this structure:
+    system_prompt = """You are a clustering analysis expert. Analyze cluster quality and relationships following this detailed structure:
 
 1. Overall Cluster Quality:
    - Interpret the silhouette score's meaning for cluster separation
-   - Explain what this suggests about the overall clustering quality
-   - Indicate what this means for automation potential
+   - Evaluate the strength of cluster boundaries
+   - Assess the overall clustering solution quality
+   - Identify any potential clustering issues or concerns
 
 2. Individual Cluster Analysis:
-   - Identify the most cohesive clusters (highest intra-cluster similarity)
-   - Point out clusters with lower cohesion
-   - Explain implications for standardization/automation
+   - Analyze the cohesion of each cluster (intra-cluster similarity)
+   - Identify the strongest and weakest clusters
+   - Evaluate cluster sizes and their significance
+   - Note any clusters that might need refinement
 
-3. Cluster Relationships:
-   - Note any significant cluster overlaps (high inter-cluster similarity)
-   - Identify distinctly separated clusters
-   - Suggest which clusters might benefit from similar automation approaches
+3. Inter-cluster Relationships:
+   - Examine similarities between clusters
+   - Identify any significant cluster overlaps
+   - Note distinctly separated clusters
+   - Analyze the hierarchy or relationships between clusters
 
-Keep the analysis focused on practical implications for automation and standardization opportunities."""
+4. Automation Implications:
+   - Assess modularization potential based on cluster separation
+   - Identify clusters suitable for immediate automation
+   - Suggest clusters that might need further refinement
+   - Consider cross-cluster automation opportunities
+
+5. Technical Recommendations:
+   - Suggest approaches for handling cluster overlaps
+   - Recommend strategies for borderline cases
+   - Propose validation methods for automated solutions
+   - Consider monitoring and maintenance needs
+
+6. Business Impact Assessment:
+   - Evaluate the reliability of cluster-based automation
+   - Consider the impact of cluster quality on accuracy
+   - Assess scalability implications
+   - Suggest priority areas for implementation
+
+Focus on providing actionable insights that can guide automation and standardization decisions."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1151,12 +1245,11 @@ Keep the analysis focused on practical implications for automation and standardi
                 {
                     "role": "user",
                     "content": (
-                        f"Analyze the cluster quality metrics:\n\n"
-                        f"Clustering Method: {method}\n"
+                        f"Analyze cluster quality metrics:\n\n"
+                        f"Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
-                        f"\nIntra-Cluster Similarity (cohesion within clusters):\n{intra_text}\n"
-                        f"\nInter-Cluster Similarity (overlap between clusters):\n{inter_text}\n"
-                        "\nProvide insights about cluster quality and implications for automation."
+                        f"\nIntra-Cluster Similarity:\n{intra_text}\n"
+                        f"\nInter-Cluster Similarity:\n{inter_text}\n"
                     )
                 }
             ],
@@ -1167,25 +1260,75 @@ Keep the analysis focused on practical implications for automation and standardi
         gpt_reply = response.choices[0].message.content
     except Exception as e:
         print(f"GPT API error: {e}")
-        gpt_reply = "I'm unable to analyze similarity scores at the moment."
+        gpt_reply = "Unable to analyze similarity scores at the moment."
 
     gpt_cache[cache_key] = gpt_reply
     return gpt_reply
 
-def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
-    """Main dispatcher for handling user questions"""
-    try:
-        # First try to get a cached response
-        cached_answer = get_cached_response(user_input, cluster_results)
-        if cached_answer:
-            return cached_answer
+def chat_interface(data: pd.DataFrame, cluster_results: dict):
+    """
+    Implements an interactive chat interface for analyzing clustering results.
+    """
+    st.header("Ask Questions About the Analysis")
 
-        # If no cached response, generate new one
-        method = cluster_results['method']
-        silhouette = cluster_results['silhouette']
-        context = json.dumps(cluster_results, indent=None)
-        
-        return cached_gpt_response(user_input, method, silhouette, context)
+    # Initialize session states
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "last_processed" not in st.session_state:
+        st.session_state.last_processed = set()
+
+    chat_container = st.container()
+    
+    # Display existing chat history
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+    # Text input
+    user_input = st.text_input(
+        "Ask about these clustering results:",
+        key="user_input",
+        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+    )
+
+    # Process new input
+    if user_input and user_input not in st.session_state.last_processed:
+        with chat_container:
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing..."):
+                    try:
+                        response = analyze_and_respond(user_input, data, cluster_results)
+                        st.write(response)
+                        
+                        st.session_state.messages.extend([
+                            {"role": "user", "content": user_input},
+                            {"role": "assistant", "content": response}
+                        ])
+                        st.session_state.last_processed.add(user_input)
+                        
+                    except Exception as e:
+                        st.error("I apologize, but I encountered an error. Please try again.")
+                        print(f"Error in chat interface: {str(e)}")
+
+def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
+    """
+    Main dispatcher for handling user questions about clustering results.
+    """
+    try:
+        # Get cached or generate new response
+        response = get_cached_response(user_input, cluster_results)
+        if response:
+            return response
+
+        # If no specific handler caught it, return a generic response
+        return (
+            "I'm not sure I understand your question. Could you try rephrasing it? "
+            "You can ask about main insights, specific clusters, similarities, or time savings."
+        )
 
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
