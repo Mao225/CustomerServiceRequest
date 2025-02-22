@@ -1193,63 +1193,53 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
 
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
-    """
-    The main chat UI in Streamlit. Displays chat history, 
-    takes user input, calls 'analyze_and_respond', and shows the response.
-    """
     st.header("Ask Questions About the Analysis")
 
-    # Initialize session state for messages and input tracking
+    # Initialize session states
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "current_question" not in st.session_state:
-        st.session_state.current_question = None
+    if "last_processed" not in st.session_state:
+        st.session_state.last_processed = set()
 
-    # Create a container for chat history
     chat_container = st.container()
     
-    # Display chat history
+    # Display existing chat history
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.write(message["content"])
 
-    # Text input at the bottom
+    # Text input
     user_input = st.text_input(
         "Ask about these clustering results:",
         key="user_input",
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
 
-    # Process new input
-    if user_input and user_input != st.session_state.current_question:
-        # Update current question to prevent duplicate processing
-        st.session_state.current_question = user_input
-        
-        # Display user message
+    # Only process if input is new and not empty
+    if user_input and user_input not in st.session_state.last_processed:
         with chat_container:
             with st.chat_message("user"):
                 st.write(user_input)
             
-            # Generate and display response with loading indicator
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing..."):
                     try:
+                        # Make API call
                         response = analyze_and_respond(user_input, data, cluster_results)
                         st.write(response)
                         
-                        # Update session state only after successful response
-                        st.session_state.messages.append({"role": "user", "content": user_input})
-                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        # Update history
+                        st.session_state.messages.extend([
+                            {"role": "user", "content": user_input},
+                            {"role": "assistant", "content": response}
+                        ])
+                        st.session_state.last_processed.add(user_input)
                         
                     except Exception as e:
-                        error_msg = "I apologize, but I encountered an error. Please try again."
-                        st.error(error_msg)
-                        print(f"Error in chat interface: {str(e)}")  # For debugging
-        
-        # Force a rerun to clear the input field
-        st.rerun()
-
+                        st.error("I apologize, but I encountered an error. Please try again.")
+                        print(f"Error in chat interface: {str(e)}")
+                        
 # ==================== 11) Process Functions for Each Method ====================
 
 def process_kmeans(data, mat, emb_valid):
