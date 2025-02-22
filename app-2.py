@@ -1334,54 +1334,6 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         print(f"Error in analyze_and_respond: {str(e)}")
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
-
-def chat_interface(data: pd.DataFrame, cluster_results: dict):
-    st.header("Ask Questions About the Analysis")
-
-    # Initialize session states
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "last_processed" not in st.session_state:
-        st.session_state.last_processed = set()
-
-    chat_container = st.container()
-    
-    # Display existing chat history
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-
-    # Text input
-    user_input = st.text_input(
-        "Ask about these clustering results:",
-        key="user_input",
-        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
-    )
-
-    # Only process if input is new and not empty
-    if user_input and user_input not in st.session_state.last_processed:
-        with chat_container:
-            with st.chat_message("user"):
-                st.write(user_input)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Analyzing..."):
-                    try:
-                        # Make API call
-                        response = analyze_and_respond(user_input, data, cluster_results)
-                        st.write(response)
-                        
-                        # Update history
-                        st.session_state.messages.extend([
-                            {"role": "user", "content": user_input},
-                            {"role": "assistant", "content": response}
-                        ])
-                        st.session_state.last_processed.add(user_input)
-                        
-                    except Exception as e:
-                        st.error("I apologize, but I encountered an error. Please try again.")
-                        print(f"Error in chat interface: {str(e)}")
                         
 # ==================== 11) Process Functions for Each Method ====================
 
