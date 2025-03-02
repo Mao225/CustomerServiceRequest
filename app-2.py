@@ -1277,10 +1277,10 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
 
     # Get user input
     user_input = st.text_input(
-        "Ask about these clustering results:",
-        key="user_input",
-        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
-    )
+    "Ask about these clustering results:",
+    key=f"user_input_{method_model1}_{param_display}",  # Different key for different configurations
+    placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+)
 
     # Process new input if not already processed
     if user_input and user_input not in st.session_state.last_processed:
