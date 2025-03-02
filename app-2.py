@@ -909,15 +909,15 @@ def show_model_analysis_bgmm(
 
 # Global cache to avoid repeated GPT calls:
 gpt_cache = {}
-gpt_cache = {}
 
 def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     """
     Enhanced caching system that properly distinguishes between different types of queries.
     Returns cached responses when available, generates new ones when needed.
     """
-    method = cluster_results['method']
-    silhouette = cluster_results['silhouette']
+    # Safely extract values with defaults
+    method = cluster_results.get('method', 'Unknown')
+    silhouette = cluster_results.get('silhouette', 0.0)
     
     # First check if it's a cluster-specific question
     cluster_match = re.search(r"cluster\s+(\d+)", question.lower())
@@ -935,15 +935,8 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
             
-        response = generate_gpt_theme_analysis(
-            cluster_results['patterns'], 
-            method, 
-            silhouette, 
-            cluster_results['similarities'],
-            cluster_id
-        )
-        gpt_cache[cache_key] = response
-        return response
+        # We don't generate new responses here - we'll let analyze_and_respond handle it
+        return None
 
     # Check for similarity analysis questions
     if any(phrase in question.lower() for phrase in [
@@ -953,14 +946,7 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
-            
-        response = generate_gpt_similarity_analysis(
-            cluster_results['similarities'],
-            method,
-            silhouette
-        )
-        gpt_cache[cache_key] = response
-        return response
+        return None
 
     # Check for general insights/analysis questions
     if any(phrase in question.lower() for phrase in [
@@ -970,15 +956,7 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         cache_key = ("general_insights", method, f"{silhouette:.4f}")
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
-            
-        response = generate_gpt_theme_analysis(
-            cluster_results['patterns'], 
-            method, 
-            silhouette, 
-            cluster_results['similarities']
-        )
-        gpt_cache[cache_key] = response
-        return response
+        return None
 
     # Handle silhouette score questions
     if any(phrase in question.lower() for phrase in ["silhouette", "quality", "validation", "score"]):
@@ -1018,14 +996,19 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
             
+        # Safely access time_savings data
         time_savings = cluster_results.get('time_savings', {})
         if time_savings:
-            total_minutes = sum(cluster['minutes'] for cluster in time_savings.values())
-            high_confidence = sum(
-                cluster['minutes'] 
-                for cluster in time_savings.values() 
-                if cluster['confidence'] == 'high'
-            )
+            # Safe summation with defaults
+            total_minutes = 0
+            high_confidence = 0
+            
+            for cluster_id, cluster_data in time_savings.items():
+                if isinstance(cluster_data, dict):
+                    total_minutes += cluster_data.get('minutes', 0)
+                    if cluster_data.get('confidence') == 'high':
+                        high_confidence += cluster_data.get('minutes', 0)
+            
             response = (
                 f"Total estimated time savings: {total_minutes:.1f} minutes, "
                 f"with {high_confidence:.1f} minutes from high-confidence opportunities. "
@@ -1034,42 +1017,14 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
             gpt_cache[cache_key] = response
             return response
 
-    # If no specific pattern matched, generate a new custom response
+    # If no specific pattern matched, check for custom response cache
     cache_key = ("custom_analysis", method, f"{silhouette:.4f}", question.lower().strip())
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
+    
+    # No cache hit found
+    return None
         
-    # Generate custom response based on context
-    try:
-        system_prompt = """You are a clustering analysis expert. Analyze the clustering results
-and provide insights relevant to the user's specific question. Focus on practical implications
-and actionable recommendations."""
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Question: {question}\n\n"
-                        f"Clustering Method: {method}\n"
-                        f"Silhouette Score: {silhouette:.2f}\n"
-                        f"Cluster Patterns:\n{json.dumps(cluster_results['patterns'], indent=2)}\n"
-                        f"Cluster Similarities:\n{json.dumps(cluster_results['similarities'], indent=2)}\n"
-                    )
-                }
-            ],
-            max_tokens=250,
-            temperature=0.3,
-            timeout=15
-        )
-        custom_response = response.choices[0].message.content
-        gpt_cache[cache_key] = custom_response
-        return custom_response
-    except Exception as e:
-        print(f"Error generating custom response: {e}")
-        return "I apologize, but I'm having trouble generating a specific response to that question. Could you try rephrasing it?"
 
 def generate_gpt_theme_analysis(
     cluster_patterns, 
@@ -1363,7 +1318,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
     Returns formatted response with method header.
     """
     try:
-        # Extract key information with safe defaults
+        # Extract key information safely with defaults
         method = cluster_results.get('method', 'Unknown')
         parameters = cluster_results.get('parameters', '')
         silhouette = cluster_results.get('silhouette', 0.0)
@@ -1371,7 +1326,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         # Create method header
         method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
-        # Try to get cached response
+        # Try to get cached response first to save API costs
         cached_answer = get_cached_response(user_input, cluster_results)
         if cached_answer:
             return method_header + cached_answer
@@ -1383,7 +1338,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             'time_savings': cluster_results.get('time_savings', {})
         }
         
-        # Generate new response using cached_gpt_response
+        # Generate response with GPT
         gpt_response = cached_gpt_response(
             user_input=user_input,
             method=method,
@@ -1392,7 +1347,6 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         )
         
         return method_header + gpt_response
-
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
         return "I apologize, but I encountered an error while analyzing. Please try again."
