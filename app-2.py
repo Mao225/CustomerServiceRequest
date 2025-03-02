@@ -1043,7 +1043,7 @@ Present your analysis in a clear, readable format with appropriate spacing and v
    • Use numbered lists for sequential steps
    • Keep paragraphs short (3-5 lines maximum)
 
-Format your response with adequate spacing between sections and bullet points. Use bold for important conclusions or findings. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
+IMPORTANT: Use proper spacing between sections and bullet points. Use bold for important conclusions or findings. You MUST include ALL 5 sections in the order specified with the exact titles shown."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1063,15 +1063,27 @@ Format your response with adequate spacing between sections and bullet points. U
                 }
             ],
             max_tokens=800,
-            temperature=0.3,
+            temperature=0.2,
             timeout=20
         )
         gpt_reply = response.choices[0].message.content
         
         # Verify response completeness
-        if not all(section in gpt_reply.lower() for section in 
-                  ['clustering quality', 'domain patterns', 'modernization', 'automation', 'implementation']):
-            gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
+        required_sections = [
+            "1. Clustering Quality Assessment", 
+            "2. Request Domain Patterns", 
+            "3. Modernization Opportunities", 
+            "4. Process Automation Opportunities",
+            "5. Implementation Recommendations"
+        ]
+        
+        missing_sections = []
+        for section in required_sections:
+            if section not in gpt_reply:
+                missing_sections.append(section)
+                
+        if missing_sections:
+            gpt_reply += "\n\nNote: Some sections appear to be missing: " + ", ".join(missing_sections) + ". Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
@@ -1079,7 +1091,6 @@ Format your response with adequate spacing between sections and bullet points. U
     except Exception as e:
         print(f"GPT API error: {e}")
         return "Error generating complete analysis. Please try again."
-
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette, parameters=""):
     """
@@ -1090,7 +1101,6 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette, p
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Rest of function unchanged...
     # Extract and format similarity data
     intra_sim = cluster_similarities.get('intra', {})
     inter_sim = cluster_similarities.get('inter', {})
@@ -1102,7 +1112,7 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette, p
 
     system_prompt = """You are an industrial equipment analytics expert evaluating cluster similarity metrics.
 
-Present your analysis in a clear, readable format with appropriate spacing:
+Present your analysis in a clear, readable format with appropriate spacing. You MUST FOLLOW THIS EXACT FORMAT with these section headings in this order:
 
 1. Similarity Metrics Interpretation
    • Explain what the silhouette score indicates about overall clustering quality
@@ -1122,7 +1132,7 @@ Present your analysis in a clear, readable format with appropriate spacing:
    • Identify where standardization would be most effective
    • Suggest concrete next steps based on similarity patterns
 
-Format your response with adequate spacing between sections. Use bold for important values or conclusions. Keep explanations concise and focused on practical implications."""
+IMPORTANT: Use proper spacing between sections. Use bold for important values or conclusions. Keep explanations concise and focused on practical implications. You MUST include ALL 3 sections in the order specified with the exact titles shown."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1142,15 +1152,25 @@ Format your response with adequate spacing between sections. Use bold for import
                 }
             ],
             max_tokens=600,
-            temperature=0.3,
+            temperature=0.2,  # Reduced from 0.3 to improve consistency
             timeout=20
         )
         gpt_reply = response.choices[0].message.content
         
         # Verify response completeness
-        if not all(section in gpt_reply.lower() for section in 
-                  ['similarity metrics', 'cluster quality', 'automation']):
-            gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
+        required_sections = [
+            "1. Similarity Metrics Interpretation", 
+            "2. Cluster Quality Assessment", 
+            "3. Automation Implications"
+        ]
+        
+        missing_sections = []
+        for section in required_sections:
+            if section not in gpt_reply:
+                missing_sections.append(section)
+                
+        if missing_sections:
+            gpt_reply += "\n\nNote: Some sections appear to be missing: " + ", ".join(missing_sections) + ". Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
