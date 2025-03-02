@@ -988,7 +988,6 @@ def generate_gpt_theme_analysis(
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Rest of function unchanged...
     # Prepare data for GPT
     if cluster_id is None:
         question_prompt = "Analyze all clusters for insights and modularization opportunities."
