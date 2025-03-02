@@ -999,53 +999,47 @@ def generate_gpt_theme_analysis(
                 'time_savings': time_savings.get(str(cid), {})
             }
 
-    system_prompt = """You are a clustering analysis expert focusing on identifying automation and modularization opportunities.
-Analyze customer service requests following this structure:
+    system_prompt = """You are an industrial equipment analytics expert analyzing service request clusters to identify automation opportunities.
 
-1. Cluster Quality Insights:
-   - Interpret the silhouette score and implications for automation
-   - Analyze intra-cluster similarity for reusable components
-   - Assess cluster coherence and distinctness
-   - Note: 'gmh' in requests indicates a plant-specific product extension. These are high-value automation candidates as they follow standard patterns
+First, examine the fundamental properties of the clustering solution:
 
-2. Theme Analysis:
-   - Identify specific patterns in requests, particularly noting product extension patterns
-   - For requests containing 'gmh', these represent product extension requests to the GMH plant
-   - Look for variations in how GMH extensions are requested (cost quotes, drawings, specifications)
-   - Note if clusters contain mixed GMH and non-GMH requests, as this may affect automation strategy
-   - Identify common terminology and request structures beyond GMH extensions
-   - Analyze request complexity levels and variations
+1. Clustering Quality Assessment
+   • Interpret the silhouette score: its meaning for overall cluster separation and quality
+   • Analyze intra-cluster cohesion: similarity levels within each cluster and their implications
+   • Evaluate inter-cluster separation: distinctiveness between different request categories
+   • Identify potential issues: overlapping clusters, noise, or clusters requiring refinement
+   • Assess overall suitability of the clustering for automation purposes
 
-3. CAD Automation Implications:
-   - Assess modularization potential for CAD libraries and templates
-   - Identify clusters suitable for immediate CAD automation
-   - Suggest clusters that might need further refinement due to design complexity
-   - Consider cross-cluster opportunities for shared CAD components
-   - For GMH-related requests, consider:
-     * Automated product number extension workflows
-     * Template creation for GMH-specific documentation
-     * Integration with existing CAD systems for GMH plant
-     * Standardization opportunities across multiple plants
+Next, identify the primary request domains and their characteristics within the clusters:
 
-4. Business Impact Analysis:
-   - Calculate ROI using provided time savings data
-   - Consider both quantitative (time saved) and qualitative benefits
-   - Factor in the reduction in errors from automation
-   - Project long-term efficiency gains
+2. Request Domain Analysis
+   • Motor specifications: IE4 motors and other motor-related requests 
+   • GMH product extensions: Patterns in product number extension requests
+   • Pricing/costing: Quote requests and cost estimation patterns
+   • Materials/components: Material specifications and requirements
+   • Replacements/maintenance: Part replacement and service requests
+   • Technical specifications: Detailed technical requirement patterns
 
-5. Technical Requirements:
-   - Define system requirements for automated workflows
-   - Specify database needs for product extensions
-   - Outline integration requirements with existing systems
-   - Consider security and validation requirements
+Then, evaluate specific automation opportunities within each domain:
 
-6. Implementation Plan:
-   - Prioritize based on time savings and complexity
-   - Suggest phased implementation approach
-   - Identify potential risks and mitigation strategies
-   - Define success metrics and KPIs
+3. Automation Opportunity Assessment
+   • Documentation templates: Standardization potential for recurring document types
+   • Workflow automation: Request handling processes suitable for automation
+   • CAD/drawing automation: Opportunities for parameterized design elements
+   • Quote generation: Standardization potential for pricing responses
+   • Parts selection: Automation potential for replacement recommendations
+   • GMH extension process: Streamlining product extension workflows
 
-Always provide complete responses for each section, ensuring business impact is quantified where possible."""
+Finally, provide strategic recommendations:
+
+4. Implementation Strategy
+   • Prioritization framework: Which clusters/domains to target first based on ROI
+   • Technical requirements: Systems needed to support the automation initiatives
+   • Process integration: How automation elements should connect across domains
+   • Success metrics: How to measure automation effectiveness
+   • Risk factors: Potential challenges and mitigation strategies
+
+Throughout your analysis, quantify business impact where possible, noting potential time savings, error reduction, and customer satisfaction improvements."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1072,7 +1066,7 @@ Always provide complete responses for each section, ensuring business impact is 
         
         # Verify response completeness
         if not all(section in gpt_reply.lower() for section in 
-                  ['business impact', 'implementation', 'technical requirements']):
+                  ['automation', 'implementation']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
@@ -1099,52 +1093,35 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     if not intra_sim and not inter_sim:
         return "No similarity scores are available for analysis."
 
-    system_prompt = """You are a clustering analysis expert specializing in CAD-related customer service requests. 
-Analyze cluster quality and relationships with special attention to GMH product extension patterns. Follow this detailed structure:
+    system_prompt = """You are an industrial equipment analytics expert evaluating cluster similarity metrics to assess automation potential.
 
-1. Overall Cluster Quality:
-   - Interpret the silhouette score's implications for CAD automation potential
-   - Evaluate cluster boundaries for GMH vs non-GMH request separation
-   - Assess clustering quality for identifying reusable CAD elements
-   - Look for patterns in how GMH-related requests are distributed across clusters
+Analyze the provided similarity metrics using this systematic approach:
 
-2. Individual Cluster Analysis:
-   - Analyze cohesion of each cluster (intra-cluster similarity)
-   - Identify clusters with high concentration of GMH requests
-   - Note clusters that mix GMH and non-GMH requests
-   - Evaluate potential for GMH-specific template creation
-   - Consider cluster sizes for prioritizing GMH automation efforts
+1. Similarity Metrics Interpretation
+   • Interpret the silhouette score and its implications for overall clustering quality
+   • Analyze intra-cluster similarity scores to identify cohesive vs. fragmented clusters
+   • Evaluate inter-cluster similarity to identify potential overlaps or clear boundaries
+   • Assess the mathematical reliability of these metrics given the clustering method
 
-3. Inter-cluster Relationships:
-   - Examine similarities between GMH and non-GMH clusters
-   - Identify shared CAD elements across GMH request clusters
-   - Analyze patterns in how GMH extensions relate to base products
-   - Look for opportunities to standardize GMH extension processes
+2. Domain-Specific Cohesion Analysis
+   • Identify which clusters likely contain motor-related requests (particularly IE4)
+   • Determine which clusters likely contain GMH product extension requests
+   • Evaluate which clusters may contain pricing, material, or replacement requests
+   • Assess if related request types are appropriately grouped or inappropriately separated
 
-4. GMH-Specific Automation Implications:
-   - Assess modularization potential for GMH-specific CAD libraries
-   - Identify clusters suitable for immediate GMH template creation
-   - Consider cross-cluster opportunities for GMH product extensions
-   - Evaluate potential for automated GMH numbering systems
-   - Analyze patterns in GMH documentation requirements
+3. Automation Implications
+   • Evaluate which clusters have sufficient cohesion for template-based automation
+   • Identify clusters where high internal similarity suggests standardized workflows
+   • Note clusters where low similarity indicates need for more complex automation approaches
+   • Assess where similarity patterns suggest cross-cluster standardization opportunities
 
-5. Technical Implementation Strategy:
-   - Suggest approaches for handling GMH product variations
-   - Recommend strategies for managing GMH CAD file versions
-   - Propose validation methods specific to GMH automation
-   - Consider integration with existing GMH plant systems
-   - Define requirements for GMH-specific data fields
+4. Technical Implementation Considerations
+   • Recommend similarity thresholds for different automation approaches
+   • Suggest where cluster boundaries might need refinement before automation
+   • Identify where similarity metrics suggest potential for shared components
+   • Assess technical feasibility based on similarity patterns
 
-6. Business Impact Assessment:
-   - Evaluate reliability of GMH-related cluster automation
-   - Consider impact on GMH product extension accuracy
-   - Assess scalability for GMH template libraries
-   - Prioritize implementation based on GMH request volumes
-   - Calculate time savings specifically for GMH-related work:
-     * Show total minutes saved for GMH clusters
-     * Compare efficiency gains between GMH and non-GMH requests
-
-Focus on providing actionable insights that can guide GMH-specific automation while maintaining consistency with base product standards."""
+Provide quantitative assessment wherever possible, referencing specific similarity values and their implications for automation success probability."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1154,13 +1131,12 @@ Focus on providing actionable insights that can guide GMH-specific automation wh
                 {
                     "role": "user",
                     "content": (
-                        f"Analyze cluster quality metrics with focus on GMH patterns:\n\n"
+                        f"Analyze similarity metrics for clustering results:\n\n"
                         f"Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
                         f"\nIntra-Cluster Similarity:\n{intra_text}\n"
                         f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                        "Pay special attention to clusters containing GMH-related requests "
-                        "and opportunities for automating GMH product extensions."
+                        "Focus on implications for automation potential across different request domains."
                     )
                 }
             ],
@@ -1169,11 +1145,18 @@ Focus on providing actionable insights that can guide GMH-specific automation wh
             timeout=20
         )
         gpt_reply = response.choices[0].message.content
+        
+        # Verify response completeness
+        if not all(section in gpt_reply.lower() for section in 
+                  ['similarity', 'cohesion', 'automation', 'technical']):
+            gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
+            
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
     except Exception as e:
         print(f"GPT API error: {e}")
         return "Unable to analyze similarity scores at the moment."
+
 
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
