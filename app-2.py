@@ -975,12 +975,12 @@ def generate_gpt_theme_analysis(
     """
     Enhanced theme analysis that includes business impact and plant-specific logic.
     """
-    # Build unique cache key - keep existing cache key logic
+    # Build unique cache key
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Keep existing data preparation logic
+    # Prepare data for GPT
     if cluster_id is None:
         question_prompt = "Analyze all clusters for insights and modularization opportunities."
         selected_clusters = cluster_patterns
@@ -988,7 +988,7 @@ def generate_gpt_theme_analysis(
         question_prompt = f"Analyze Cluster {cluster_id} specifically for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
-    # Keep existing cluster data gathering logic
+    # Gather cluster data including time savings
     cluster_data = {}
     for cid, info in selected_clusters.items():
         if isinstance(info, dict):
@@ -999,7 +999,6 @@ def generate_gpt_theme_analysis(
                 'time_savings': time_savings.get(str(cid), {})
             }
 
-    # Update system prompt to improve formatting - only change formatting instructions
     system_prompt = """You are an industrial equipment analytics expert analyzing service request clusters to identify automation, modernization, and standardization opportunities.
 
 Present your analysis in a clear, readable format with appropriate spacing and visual structure:
@@ -1036,10 +1035,9 @@ Present your analysis in a clear, readable format with appropriate spacing and v
    • Use numbered lists for sequential steps
    • Keep paragraphs short (3-5 lines maximum)
 
-Format your response with adequate spacing between sections and bullet points. Ensure each major section (1-5) is clearly separated from the others. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
+Format your response with adequate spacing between sections and bullet points. Use bold for important conclusions or findings. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
 
     try:
-        # Keep existing GPT call logic
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
@@ -1062,14 +1060,7 @@ Format your response with adequate spacing between sections and bullet points. E
         )
         gpt_reply = response.choices[0].message.content
         
-        # Improve formatting of the response
-        gpt_reply = gpt_reply.replace("\n1. ", "\n\n1. ")
-        gpt_reply = gpt_reply.replace("\n2. ", "\n\n2. ")
-        gpt_reply = gpt_reply.replace("\n3. ", "\n\n3. ")
-        gpt_reply = gpt_reply.replace("\n4. ", "\n\n4. ")
-        gpt_reply = gpt_reply.replace("\n5. ", "\n\n5. ")
-            
-        # Verify response completeness (keep existing logic)
+        # Verify response completeness
         if not all(section in gpt_reply.lower() for section in 
                   ['clustering quality', 'domain patterns', 'modernization', 'automation', 'implementation']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
@@ -1172,39 +1163,52 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         # Check if user is asking about a specific cluster
         cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
         
-        # Create method header with better markdown formatting
+        # Create method header - update it if user mentioned a specific cluster
         if cluster_match:
             specific_cluster = cluster_match.group(1)
-            method_header = f"## Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):\n\n"
+            # Just add the cluster number to the method header
+            method_header = f"\n**Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
         else:
-            method_header = f"## Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):\n\n"
+            # Default header format
+            method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
-        # Get the appropriate response based on the question type
+        # Special case for main insights/patterns questions
         if any(phrase in user_input.lower() for phrase in [
             "main insight", "main insights", "key insight", "overview", 
             "summary", "analyze", "analysis", "theme", "pattern"
         ]):
-            response = generate_gpt_theme_analysis(
+            # Always use detailed theme analysis for main insights
+            detailed_response = generate_gpt_theme_analysis(
                 cluster_results.get('patterns', {}),
                 method,
                 silhouette,
                 cluster_results.get('similarities', {}),
                 cluster_results.get('time_savings', {})
             )
-        elif any(phrase in user_input.lower() for phrase in [
+            return method_header + detailed_response
+
+        # Special case for similarity questions
+        if any(phrase in user_input.lower() for phrase in [
             "similarity", "cohesion", "coherence", "related", "relationship",
             "connection", "overlap", "distance"
         ]):
-            response = generate_gpt_similarity_analysis(
+            similarity_response = generate_gpt_similarity_analysis(
                 cluster_results.get('similarities', {}),
                 method,
                 silhouette
             )
-        elif cached_answer := get_cached_response(user_input, cluster_results):
-            response = cached_answer
-        elif cluster_match:
+            return method_header + similarity_response
+
+        # Try to get cached response for other question types
+        cached_answer = get_cached_response(user_input, cluster_results)
+        if cached_answer:
+            return method_header + cached_answer
+
+        # Specific cluster analysis
+        cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
+        if cluster_match:
             cluster_id = cluster_match.group(1)
-            response = generate_gpt_theme_analysis(
+            cluster_response = generate_gpt_theme_analysis(
                 cluster_results.get('patterns', {}),
                 method,
                 silhouette,
@@ -1212,30 +1216,28 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 cluster_results.get('time_savings', {}),
                 cluster_id=cluster_id
             )
-        else:
-            response = generate_gpt_theme_analysis(
-                cluster_results.get('patterns', {}),
-                method,
-                silhouette,
-                cluster_results.get('similarities', {}),
-                cluster_results.get('time_savings', {})
-            )
+            return method_header + cluster_response
 
-        # Simple formatting improvement - add markdown headings to sections
-        response = response.replace("\n1. ", "\n\n### 1. ")
-        response = response.replace("\n2. ", "\n\n### 2. ")
-        response = response.replace("\n3. ", "\n\n### 3. ")
-        response = response.replace("\n4. ", "\n\n### 4. ")
-        response = response.replace("\n5. ", "\n\n### 5. ")
-            
-        return method_header + response
-            
+        # Default to general analysis for any other question
+        context = {
+            'patterns': cluster_results.get('patterns', {}),
+            'similarities': cluster_results.get('similarities', {}),
+            'time_savings': cluster_results.get('time_savings', {})
+        }
+        
+        # For all other questions, use the detailed theme analysis
+        return method_header + generate_gpt_theme_analysis(
+            cluster_results.get('patterns', {}),
+            method,
+            silhouette,
+            cluster_results.get('similarities', {}),
+            cluster_results.get('time_savings', {})
+        )
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
         import traceback
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
-        
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
     """
@@ -1298,31 +1300,6 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                     st.error("I apologize, but I encountered an error. Please try again.")
                     print(f"Error in chat interface: {str(e)}")
                     traceback.print_exc()
-
-# Add this debug toggle at the bottom of your main functio
-def add_debug_toggle():
-    if st.checkbox("Show Debug Information"):
-        with st.expander("Debug Log"):
-            if st.button("Test GPT Connection"):
-                try:
-                    test_response = openai.ChatCompletion.create(
-                        model="gpt-4",
-                        messages=[
-                            {"role": "user", "content": "Respond with 'OpenAI connection successful'"}
-                        ],
-                        max_tokens=20
-                    )
-                    st.success(f"API Connection Test: {test_response.choices[0].message.content}")
-                except Exception as e:
-                    st.error(f"API Connection Error: {str(e)}")
-            
-            if st.button("Test Cache"):
-                st.write("Current cache keys:")
-                st.write(list(gpt_cache.keys()))
-            
-            if st.button("Clear Cache"):
-                gpt_cache.clear()
-                st.success("Cache cleared!")
 
                         
 # ==================== 11) Process Functions for Each Method ====================
