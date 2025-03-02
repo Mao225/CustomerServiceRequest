@@ -1186,8 +1186,17 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         parameters = cluster_results.get('parameters', '')
         silhouette = cluster_results.get('silhouette', 0.0)
         
-        # Create method header
-        method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
+        # Check if user is asking about a specific cluster
+        cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
+        
+        # Create method header - update it if user mentioned a specific cluster
+        if cluster_match:
+            specific_cluster = cluster_match.group(1)
+            # Just add the cluster number to the method header
+            method_header = f"\n**Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
+        else:
+            # Default header format
+            method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
         # Special case for main insights/patterns questions
         if any(phrase in user_input.lower() for phrase in [
