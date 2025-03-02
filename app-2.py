@@ -1238,6 +1238,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         import traceback
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
+        
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
     """
