@@ -1025,14 +1025,13 @@ Present your analysis in a clear, readable format with appropriate spacing and v
    • Highlight any emerging trends or evolving customer needs visible in the data
 
 3. Modernization Opportunities (Explore all possibilities)
-   • Product Standardization: Identify ANY frequently requested product variants that could be added to standard portfolio
+   • Product Standardization: Identify ANY frequently requested product variants that could be added to standard portfolio (Except GMH product number extension)
    • Component Modularization: Note opportunities for creating standardized components across product lines
-   • Technology Upgrades: Identify where newer technologies could replace legacy systems
    • Portfolio Optimization: Suggest product categories that could be consolidated or expanded
    • Explicitly distinguish between different types of modernization for each cluster
 
 4. Process Automation Opportunities
-   • Workflow Automation: Identify repeatable processes across ANY domain
+   • Workflow Automation: Identify repeatable processes across ANY domain (such as GMH product number extension)
    • Documentation Standardization: Note patterns in how technical information is requested/provided
    • Quote/Price Automation: Identify standardizable pricing elements
    • Design Automation: Note opportunities for parametric or template-based design
