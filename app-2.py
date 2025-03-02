@@ -999,47 +999,43 @@ def generate_gpt_theme_analysis(
                 'time_savings': time_savings.get(str(cid), {})
             }
 
-    system_prompt = """You are an industrial equipment analytics expert analyzing service request clusters to identify automation opportunities.
+    system_prompt = """You are an industrial equipment analytics expert analyzing service request clusters to identify automation, modernization, and standardization opportunities.
 
-First, examine the fundamental properties of the clustering solution:
+Present your analysis in a clear, readable format with appropriate spacing and visual structure:
 
 1. Clustering Quality Assessment
-   • Interpret the silhouette score: its meaning for overall cluster separation and quality
-   • Analyze intra-cluster cohesion: similarity levels within each cluster and their implications
-   • Evaluate inter-cluster separation: distinctiveness between different request categories
-   • Identify potential issues: overlapping clusters, noise, or clusters requiring refinement
-   • Assess overall suitability of the clustering for automation purposes
+   • Interpret the silhouette score and what it means for automation potential
+   • Explain cluster cohesion in simple terms with concrete implications
+   • Clearly state whether clusters are well-separated or overlapping
+   • Use short sentences and avoid technical jargon where possible
 
-Next, identify the primary request domains and their characteristics within the clusters:
+2. Request Domain Patterns (Present as distinct bullet points)
+   • Identify ALL major product types and request categories present in the clusters
+   • For each identified product/request type, note specific patterns and frequencies
+   • Look for repetitive elements across different request types
+   • Highlight any emerging trends or evolving customer needs visible in the data
 
-2. Request Domain Analysis
-   • Motor specifications: IE4 motors and other motor-related requests 
-   • GMH product extensions: Patterns in product number extension requests
-   • Pricing/costing: Quote requests and cost estimation patterns
-   • Materials/components: Material specifications and requirements
-   • Replacements/maintenance: Part replacement and service requests
-   • Technical specifications: Detailed technical requirement patterns
+3. Modernization Opportunities (Explore all possibilities)
+   • Product Standardization: Identify ANY frequently requested product variants that could be added to standard portfolio
+   • Component Modularization: Note opportunities for creating standardized components across product lines
+   • Technology Upgrades: Identify where newer technologies could replace legacy systems
+   • Portfolio Optimization: Suggest product categories that could be consolidated or expanded
+   • Explicitly distinguish between different types of modernization for each cluster
 
-Then, evaluate specific automation opportunities within each domain:
+4. Process Automation Opportunities
+   • Workflow Automation: Identify repeatable processes across ANY domain
+   • Documentation Standardization: Note patterns in how technical information is requested/provided
+   • Quote/Price Automation: Identify standardizable pricing elements
+   • Design Automation: Note opportunities for parametric or template-based design
+   • For each opportunity, estimate implementation complexity and potential impact
 
-3. Automation Opportunity Assessment
-   • Documentation templates: Standardization potential for recurring document types
-   • Workflow automation: Request handling processes suitable for automation
-   • CAD/drawing automation: Opportunities for parameterized design elements
-   • Quote generation: Standardization potential for pricing responses
-   • Parts selection: Automation potential for replacement recommendations
-   • GMH extension process: Streamlining product extension workflows
+5. Implementation Recommendations
+   • Present prioritized steps with clear rationale
+   • Organize technical requirements by domain
+   • Use numbered lists for sequential steps
+   • Keep paragraphs short (3-5 lines maximum)
 
-Finally, provide strategic recommendations:
-
-4. Implementation Strategy
-   • Prioritization framework: Which clusters/domains to target first based on ROI
-   • Technical requirements: Systems needed to support the automation initiatives
-   • Process integration: How automation elements should connect across domains
-   • Success metrics: How to measure automation effectiveness
-   • Risk factors: Potential challenges and mitigation strategies
-
-Throughout your analysis, quantify business impact where possible, noting potential time savings, error reduction, and customer satisfaction improvements."""
+Format your response with adequate spacing between sections and bullet points. Use bold for important conclusions or findings. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1053,8 +1049,8 @@ Throughout your analysis, quantify business impact where possible, noting potent
                         f"Method: {method}\n"
                         f"Silhouette Score: {silhouette:.2f}\n"
                         f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
-                        "Note: Pay special attention to product extension requests (e.g., 'gmh') "
-                        "and ensure complete responses for all sections."
+                        "Note: Pay special attention to all potentially repeating patterns "
+                        "that could indicate automation or standardization opportunities."
                     )
                 }
             ],
@@ -1066,7 +1062,7 @@ Throughout your analysis, quantify business impact where possible, noting potent
         
         # Verify response completeness
         if not all(section in gpt_reply.lower() for section in 
-                  ['automation', 'implementation']):
+                  ['clustering quality', 'domain patterns', 'modernization', 'automation', 'implementation']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
@@ -1076,9 +1072,11 @@ Throughout your analysis, quantify business impact where possible, noting potent
         print(f"GPT API error: {e}")
         return "Error generating complete analysis. Please try again."
 
+
+
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     """
-    Generate analysis of cluster similarity and quality metrics with focus on GMH-specific patterns.
+    Generate analysis of cluster similarity and quality metrics with focus on automation potential.
     """
     cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
     if cache_key in gpt_cache:
@@ -1093,35 +1091,29 @@ def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
     if not intra_sim and not inter_sim:
         return "No similarity scores are available for analysis."
 
-    system_prompt = """You are an industrial equipment analytics expert evaluating cluster similarity metrics to assess automation potential.
+    system_prompt = """You are an industrial equipment analytics expert evaluating cluster similarity metrics.
 
-Analyze the provided similarity metrics using this systematic approach:
+Present your analysis in a clear, readable format with appropriate spacing:
 
 1. Similarity Metrics Interpretation
-   • Interpret the silhouette score and its implications for overall clustering quality
-   • Analyze intra-cluster similarity scores to identify cohesive vs. fragmented clusters
-   • Evaluate inter-cluster similarity to identify potential overlaps or clear boundaries
-   • Assess the mathematical reliability of these metrics given the clustering method
+   • Explain what the silhouette score indicates about overall clustering quality
+   • Interpret intra-cluster similarity scores in plain language
+   • Assess what inter-cluster similarity reveals about cluster separation
+   • Use short sentences and concrete examples
 
-2. Domain-Specific Cohesion Analysis
-   • Identify which clusters likely contain motor-related requests (particularly IE4)
-   • Determine which clusters likely contain GMH product extension requests
-   • Evaluate which clusters may contain pricing, material, or replacement requests
-   • Assess if related request types are appropriately grouped or inappropriately separated
+2. Cluster Quality Assessment
+   • Identify the strongest (most cohesive) and weakest clusters
+   • Explain which clusters have clear boundaries versus overlapping ones
+   • Assess which clusters are most suitable for automation
+   • Note any clusters that might need refinement or subdivision
 
 3. Automation Implications
-   • Evaluate which clusters have sufficient cohesion for template-based automation
-   • Identify clusters where high internal similarity suggests standardized workflows
-   • Note clusters where low similarity indicates need for more complex automation approaches
-   • Assess where similarity patterns suggest cross-cluster standardization opportunities
+   • Connect similarity scores to specific automation potential
+   • Explain which types of requests could be most reliably automated
+   • Identify where standardization would be most effective
+   • Suggest concrete next steps based on similarity patterns
 
-4. Technical Implementation Considerations
-   • Recommend similarity thresholds for different automation approaches
-   • Suggest where cluster boundaries might need refinement before automation
-   • Identify where similarity metrics suggest potential for shared components
-   • Assess technical feasibility based on similarity patterns
-
-Provide quantitative assessment wherever possible, referencing specific similarity values and their implications for automation success probability."""
+Format your response with adequate spacing between sections. Use bold for important values or conclusions. Keep explanations concise and focused on practical implications."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -1148,7 +1140,7 @@ Provide quantitative assessment wherever possible, referencing specific similari
         
         # Verify response completeness
         if not all(section in gpt_reply.lower() for section in 
-                  ['similarity', 'cohesion', 'automation', 'technical']):
+                  ['similarity metrics', 'cluster quality', 'automation']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
@@ -1156,7 +1148,6 @@ Provide quantitative assessment wherever possible, referencing specific similari
     except Exception as e:
         print(f"GPT API error: {e}")
         return "Unable to analyze similarity scores at the moment."
-
 
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
