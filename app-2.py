@@ -1082,14 +1082,16 @@ Format your response with adequate spacing between sections and bullet points. U
         return "Error generating complete analysis. Please try again."
 
 
-def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
+def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette, parameters=""):
     """
     Generate analysis of cluster similarity and quality metrics with focus on automation potential.
+    Now includes parameters in the cache key.
     """
-    cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
+    cache_key = ("similarity_analysis", method, parameters, f"{silhouette:.4f}")
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
+    # Rest of function unchanged...
     # Extract and format similarity data
     intra_sim = cluster_similarities.get('intra', {})
     inter_sim = cluster_similarities.get('inter', {})
@@ -1132,7 +1134,7 @@ Format your response with adequate spacing between sections. Use bold for import
                     "role": "user",
                     "content": (
                         f"Analyze similarity metrics for clustering results:\n\n"
-                        f"Method: {method}\n"
+                        f"Method: {method} {parameters}\n"  # Now includes parameters
                         f"Silhouette Score: {silhouette:.2f}\n"
                         f"\nIntra-Cluster Similarity:\n{intra_text}\n"
                         f"\nInter-Cluster Similarity:\n{inter_text}\n"
@@ -1156,6 +1158,8 @@ Format your response with adequate spacing between sections. Use bold for import
     except Exception as e:
         print(f"GPT API error: {e}")
         return "Unable to analyze similarity scores at the moment."
+
+
 
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
@@ -1191,7 +1195,8 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 method,
                 silhouette,
                 cluster_results.get('similarities', {}),
-                cluster_results.get('time_savings', {})
+                cluster_results.get('time_savings', {}),
+                parameters=parameters  # Pass parameters here
             )
             return method_header + detailed_response
 
@@ -1203,7 +1208,8 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             similarity_response = generate_gpt_similarity_analysis(
                 cluster_results.get('similarities', {}),
                 method,
-                silhouette
+                silhouette,
+                parameters=parameters  # Pass parameters here
             )
             return method_header + similarity_response
 
@@ -1222,7 +1228,8 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 silhouette,
                 cluster_results.get('similarities', {}),
                 cluster_results.get('time_savings', {}),
-                cluster_id=cluster_id
+                cluster_id=cluster_id,
+                parameters=parameters  # Pass parameters here
             )
             return method_header + cluster_response
 
@@ -1239,7 +1246,8 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             method,
             silhouette,
             cluster_results.get('similarities', {}),
-            cluster_results.get('time_savings', {})
+            cluster_results.get('time_savings', {}),
+            parameters=parameters  # Pass parameters here
         )
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
@@ -1247,67 +1255,6 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
-def chat_interface(data: pd.DataFrame, cluster_results: dict):
-    """
-    Implements an interactive chat interface for analyzing clustering results.
-    """
-    st.header("Ask Questions About the Analysis")
-
-    # Initialize session states if not exist
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "last_processed" not in st.session_state:
-        st.session_state.last_processed = set()
-
-    # Create container for chat
-    chat_container = st.container()
-    
-    # Display existing chat history
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-    # Get user input
-    user_input = st.text_input(
-        "Ask about these clustering results:",
-        key="user_input",
-        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
-    )
-
-    # Process new input if not already processed
-    if user_input and user_input not in st.session_state.last_processed:
-        with chat_container:
-            # Show user message
-            with st.chat_message("user"):
-                st.write(user_input)
-            
-            # Process and show assistant response
-            with st.chat_message("assistant"):
-                try:
-                    # Create status indicator
-                    with st.status("Analyzing...", expanded=False) as status:
-                        # Get response
-                        response = analyze_and_respond(user_input, data, cluster_results)
-                        # Update status on success
-                        status.update(label="Analysis complete!", state="complete")
-                        # Display response
-                        st.markdown(response)
-                        
-                        # Update conversation history
-                        st.session_state.messages.extend([
-                            {"role": "user", "content": user_input},
-                            {"role": "assistant", "content": response}
-                        ])
-                        st.session_state.last_processed.add(user_input)
-                        
-                except Exception as e:
-                    # Handle errors gracefully
-                    import traceback
-                    status.update(label="Analysis failed", state="error")
-                    st.error("I apologize, but I encountered an error. Please try again.")
-                    print(f"Error in chat interface: {str(e)}")
-                    traceback.print_exc()
 
                         
 # ==================== 11) Process Functions for Each Method ====================
