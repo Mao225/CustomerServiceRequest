@@ -1034,7 +1034,7 @@ Present your analysis in a clear, readable format with appropriate spacing and v
    • Look for repetitive elements across different request types
    • Highlight any emerging trends or evolving customer needs visible in the data
 
-3. Modernization Opportunities (Explore all possibilities)
+3. Modularization Opportunities (Explore all possibilities)
    • Product Standardization: Identify ANY frequently requested product variants that could be added to standard portfolio (Except GMH product number extension)
    • Component Modularization: Note opportunities for creating standardized components across product lines
    • Portfolio Optimization: Suggest product categories that could be consolidated or expanded
@@ -1698,7 +1698,7 @@ def generate_gpt_theme_analysis_for_cluster(requests, cluster_id):
             model="gpt-4",
             messages=messages,
             max_tokens=250,
-            temperature=0.3,
+            temperature=0.2,
             timeout=10
         )
         return response.choices[0].message.content
