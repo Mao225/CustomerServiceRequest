@@ -1172,52 +1172,39 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         # Check if user is asking about a specific cluster
         cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
         
-        # Create method header - update it if user mentioned a specific cluster
+        # Create method header with better markdown formatting
         if cluster_match:
             specific_cluster = cluster_match.group(1)
-            # Just add the cluster number to the method header
-            method_header = f"\n**Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
+            method_header = f"## Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):\n\n"
         else:
-            # Default header format
-            method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
+            method_header = f"## Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):\n\n"
 
-        # Special case for main insights/patterns questions
+        # Get the appropriate response based on the question type
         if any(phrase in user_input.lower() for phrase in [
             "main insight", "main insights", "key insight", "overview", 
             "summary", "analyze", "analysis", "theme", "pattern"
         ]):
-            # Always use detailed theme analysis for main insights
-            detailed_response = generate_gpt_theme_analysis(
+            response = generate_gpt_theme_analysis(
                 cluster_results.get('patterns', {}),
                 method,
                 silhouette,
                 cluster_results.get('similarities', {}),
                 cluster_results.get('time_savings', {})
             )
-            return method_header + detailed_response
-
-        # Special case for similarity questions
-        if any(phrase in user_input.lower() for phrase in [
+        elif any(phrase in user_input.lower() for phrase in [
             "similarity", "cohesion", "coherence", "related", "relationship",
             "connection", "overlap", "distance"
         ]):
-            similarity_response = generate_gpt_similarity_analysis(
+            response = generate_gpt_similarity_analysis(
                 cluster_results.get('similarities', {}),
                 method,
                 silhouette
             )
-            return method_header + similarity_response
-
-        # Try to get cached response for other question types
-        cached_answer = get_cached_response(user_input, cluster_results)
-        if cached_answer:
-            return method_header + cached_answer
-
-        # Specific cluster analysis
-        cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
-        if cluster_match:
+        elif cached_answer := get_cached_response(user_input, cluster_results):
+            response = cached_answer
+        elif cluster_match:
             cluster_id = cluster_match.group(1)
-            cluster_response = generate_gpt_theme_analysis(
+            response = generate_gpt_theme_analysis(
                 cluster_results.get('patterns', {}),
                 method,
                 silhouette,
@@ -1225,23 +1212,24 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 cluster_results.get('time_savings', {}),
                 cluster_id=cluster_id
             )
-            return method_header + cluster_response
+        else:
+            response = generate_gpt_theme_analysis(
+                cluster_results.get('patterns', {}),
+                method,
+                silhouette,
+                cluster_results.get('similarities', {}),
+                cluster_results.get('time_savings', {})
+            )
 
-        # Default to general analysis for any other question
-        context = {
-            'patterns': cluster_results.get('patterns', {}),
-            'similarities': cluster_results.get('similarities', {}),
-            'time_savings': cluster_results.get('time_savings', {})
-        }
-        
-        # For all other questions, use the detailed theme analysis
-        return method_header + generate_gpt_theme_analysis(
-            cluster_results.get('patterns', {}),
-            method,
-            silhouette,
-            cluster_results.get('similarities', {}),
-            cluster_results.get('time_savings', {})
-        )
+        # Simple formatting improvement - add markdown headings to sections
+        response = response.replace("\n1. ", "\n\n### 1. ")
+        response = response.replace("\n2. ", "\n\n### 2. ")
+        response = response.replace("\n3. ", "\n\n### 3. ")
+        response = response.replace("\n4. ", "\n\n### 4. ")
+        response = response.replace("\n5. ", "\n\n### 5. ")
+            
+        return method_header + response
+            
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
         import traceback
