@@ -1527,6 +1527,15 @@ def main():
     )
     st.title("Customer Service Requests Clustering Results")
 
+    # Initialize session state for configuration tracking
+    if "current_config" not in st.session_state:
+        st.session_state.current_config = {
+            "method": None, 
+            "params": "", 
+            "silhouette": 0.0,
+            "cluster_col": None
+        }
+
     data = load_data()
     data['Embeddings'] = data['Embeddings'].apply(parse_embedding)
 
@@ -1565,7 +1574,7 @@ def main():
             data, mat, emb_valid, eps_range_dbscan, min_samples_range_dbscan
         )
 
-     # Check if configuration has changed
+    # Create the new configuration
     new_config = {
         "method": method_model1,
         "params": param_display,
@@ -1573,7 +1582,18 @@ def main():
         "cluster_col": cluster_col
     }
     
-    config_changed = (st.session_state.current_config != new_config)
+    # Check if configuration has changed
+    # Get the old config values safely with a default value for comparison
+    old_method = st.session_state.current_config.get("method")
+    old_params = st.session_state.current_config.get("params", "")
+    old_silhouette = st.session_state.current_config.get("silhouette", 0.0)
+    old_cluster_col = st.session_state.current_config.get("cluster_col")
+    
+    config_changed = (old_method != method_model1 or
+                      old_params != param_display or
+                      old_silhouette != silhouette_for_summary or
+                      old_cluster_col != cluster_col)
+    
     if config_changed:
         # Clear the GPT cache when configuration changes
         global gpt_cache
@@ -1597,7 +1617,6 @@ def main():
             st.warning("No valid data for clustering analysis")
     else:
         st.warning("Please select a clustering method")
-
-
+        
 if __name__ == "__main__":
     main()
