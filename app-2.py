@@ -1133,18 +1133,26 @@ Always provide complete responses for each section, ensuring business impact is 
             temperature=0.3,
             timeout=20  # Increased timeout
         )
+        print("OpenAI API call successful")
         gpt_reply = response.choices[0].message.content
+        print(f"GPT response length: {len(gpt_reply)}")
+        print(f"GPT response preview: {gpt_reply[:100]}...")
         
         # Verify response completeness
-        if not all(section in gpt_reply.lower() for section in 
-                  ['business impact', 'implementation', 'technical requirements']):
+        all_sections_present = all(section in gpt_reply.lower() for section in 
+                  ['business impact', 'implementation', 'technical requirements'])
+        print(f"All sections present: {all_sections_present}")
+        
+        if not all_sections_present:
+            print("Adding note about missing sections")
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
         
     except Exception as e:
-        print(f"GPT API error: {e}")
+        print(f"ERROR in OpenAI API call: {str(e)}")
+        traceback.print_exc()  # Add this import at the top: import traceback
         return "Error generating complete analysis. Please try again."
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
