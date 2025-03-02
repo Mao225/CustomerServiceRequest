@@ -1109,6 +1109,9 @@ Analyze customer service requests following this structure:
 
 Always provide complete responses for each section, ensuring business impact is quantified where possible."""
 
+    Print(f"System prompt length: {len(system_prompt)}")
+    print("System prompt first 100 chars: " + system_prompt[:100] + "...")
+    
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -1210,6 +1213,7 @@ Focus on providing actionable insights that can guide GMH-specific automation wh
 
     max_retries = 3
     retry_delay = 1
+
     
     for attempt in range(max_retries):
         try:
