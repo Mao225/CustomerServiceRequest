@@ -1318,20 +1318,29 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
     Returns formatted response with method header.
     """
     try:
+        print("=== analyze_and_respond called with: ===")
+        print(f"User input: {user_input}")
+        print(f"Cluster results keys: {list(cluster_results.keys())}")
+        
         # Extract key information safely with defaults
         method = cluster_results.get('method', 'Unknown')
         parameters = cluster_results.get('parameters', '')
         silhouette = cluster_results.get('silhouette', 0.0)
         
+        print(f"Method: {method}, Parameters: {parameters}, Silhouette: {silhouette}")
+        
         # Create method header
         method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
         # Try to get cached response first to save API costs
+        print("Checking for cached response...")
         cached_answer = get_cached_response(user_input, cluster_results)
         if cached_answer:
+            print("Using cached response")
             return method_header + cached_answer
 
         # If no cached response, prepare context for GPT
+        print("No cached response found, preparing context for GPT...")
         context = {
             'patterns': cluster_results.get('patterns', {}),
             'similarities': cluster_results.get('similarities', {}),
@@ -1339,6 +1348,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         }
         
         # Generate response with GPT
+        print("Calling cached_gpt_response...")
         gpt_response = cached_gpt_response(
             user_input=user_input,
             method=method,
@@ -1346,9 +1356,13 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             context=json.dumps(context, indent=2)
         )
         
+        print(f"GPT Response length: {len(gpt_response)}")
+        print(f"GPT Response preview: {gpt_response[:100]}...")
+        
         return method_header + gpt_response
     except Exception as e:
-        print(f"Error in analyze_and_respond: {str(e)}")
+        print(f"ERROR in analyze_and_respond: {str(e)}")
+        traceback.print_exc()  # Add this import at the top: import traceback
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
 
