@@ -1310,7 +1310,7 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                     print(f"Error in chat interface: {str(e)}")
                     traceback.print_exc()
 
-# Add this debug toggle at the bottom of your main function (or wherever fits in your UI)
+# Add this debug toggle at the bottom of your main functio
 def add_debug_toggle():
     if st.checkbox("Show Debug Information"):
         with st.expander("Debug Log"):
