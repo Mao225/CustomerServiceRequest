@@ -916,27 +916,25 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     Enhanced caching system that properly distinguishes between different types of queries.
     Returns cached responses when available, generates new ones when needed.
     """
+    # For main insights questions, ALWAYS use the detailed analysis
+    if any(phrase in question.lower() for phrase in [
+        "main insight", "main insights", "key insight", "overview", 
+        "summary", "analyze", "analysis", "theme", "pattern"
+    ]):
+        # Return None to force detailed analysis generation
+        return None
+    
     # Safely extract values with defaults
     method = cluster_results.get('method', 'Unknown')
     silhouette = cluster_results.get('silhouette', 0.0)
     
-    # First check if it's a cluster-specific question
+    # Check for cluster-specific question
     cluster_match = re.search(r"cluster\s+(\d+)", question.lower())
     if cluster_match:
         cluster_id = cluster_match.group(1)
-        if any(phrase in question.lower() for phrase in [
-            "modularization", "automation", "opportunity", "opportunities",
-            "automate", "improve", "efficiency", "module", "reusable",
-            "template", "workflow", "process", "standardize"
-        ]):
-            cache_key = ("cluster_automation", method, f"{silhouette:.4f}", cluster_id)
-        else:
-            cache_key = ("cluster_analysis", method, f"{silhouette:.4f}", cluster_id)
-            
+        cache_key = ("cluster_analysis", method, f"{silhouette:.4f}", cluster_id)
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
-            
-        # We don't generate new responses here - we'll let analyze_and_respond handle it
         return None
 
     # Check for similarity analysis questions
@@ -949,83 +947,22 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
             return gpt_cache[cache_key]
         return None
 
-    # Check for general insights/analysis questions
-    if any(phrase in question.lower() for phrase in [
-        "main insight", "main insights", "key insight", "overview", 
-        "summary", "analyze", "analysis", "theme", "pattern"
-    ]):
-        cache_key = ("general_insights", method, f"{silhouette:.4f}")
-        if cache_key in gpt_cache:
-            return gpt_cache[cache_key]
-        return None
-
     # Handle silhouette score questions
     if any(phrase in question.lower() for phrase in ["silhouette", "quality", "validation", "score"]):
         cache_key = ("quality_analysis", method, f"{silhouette:.4f}")
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
-            
-        interpretation = (
-            "excellent" if silhouette > 0.7
-            else "good" if silhouette > 0.5
-            else "moderate" if silhouette > 0.3
-            else "weak"
-        )
-        quality = (
-            "very well defined and separated" if silhouette > 0.7
-            else "well separated" if silhouette > 0.5
-            else "somewhat overlapping" if silhouette > 0.3
-            else "significantly overlapping"
-        )
-        modular_potential = (
-            "high potential for modularization" if silhouette > 0.7
-            else "moderate potential for modularization" if silhouette > 0.5
-            else "limited potential for modularization" if silhouette > 0.3
-            else "challenging for modularization"
-        )
-        response = (
-            f"The silhouette score is {silhouette:.2f}, indicating {interpretation} cluster quality. "
-            f"This means the clusters are {quality}, suggesting {modular_potential}. "
-            f"Higher values (closer to 1) indicate better-defined clusters and better modularization potential."
-        )
-        gpt_cache[cache_key] = response
-        return response
+        return None
 
     # Handle time savings questions
     if any(phrase in question.lower() for phrase in ["time", "saving", "efficiency", "ROI", "benefit"]):
         cache_key = ("time_analysis", method, f"{silhouette:.4f}")
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
-            
-        # Safely access time_savings data
-        time_savings = cluster_results.get('time_savings', {})
-        if time_savings:
-            # Safe summation with defaults
-            total_minutes = 0
-            high_confidence = 0
-            
-            for cluster_id, cluster_data in time_savings.items():
-                if isinstance(cluster_data, dict):
-                    total_minutes += cluster_data.get('minutes', 0)
-                    if cluster_data.get('confidence') == 'high':
-                        high_confidence += cluster_data.get('minutes', 0)
-            
-            response = (
-                f"Total estimated time savings: {total_minutes:.1f} minutes, "
-                f"with {high_confidence:.1f} minutes from high-confidence opportunities. "
-                "These estimates are based on cluster sizes and similarity scores."
-            )
-            gpt_cache[cache_key] = response
-            return response
+        return None
 
-    # If no specific pattern matched, check for custom response cache
-    cache_key = ("custom_analysis", method, f"{silhouette:.4f}", question.lower().strip())
-    if cache_key in gpt_cache:
-        return gpt_cache[cache_key]
-    
-    # No cache hit found
+    # No cache hit found - force detailed analysis
     return None
-        
 
 def generate_gpt_theme_analysis(
     cluster_patterns, 
@@ -1110,9 +1047,6 @@ Analyze customer service requests following this structure:
 
 Always provide complete responses for each section, ensuring business impact is quantified where possible."""
 
-    Print(f"System prompt length: {len(system_prompt)}")
-    print("System prompt first 100 chars: " + system_prompt[:100] + "...")
-    
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -1130,30 +1064,22 @@ Always provide complete responses for each section, ensuring business impact is 
                     )
                 }
             ],
-            max_tokens=800,  # Increased to ensure complete responses
+            max_tokens=800,
             temperature=0.3,
-            timeout=20  # Increased timeout
+            timeout=20
         )
-        print("OpenAI API call successful")
         gpt_reply = response.choices[0].message.content
-        print(f"GPT response length: {len(gpt_reply)}")
-        print(f"GPT response preview: {gpt_reply[:100]}...")
         
         # Verify response completeness
-        all_sections_present = all(section in gpt_reply.lower() for section in 
-                  ['business impact', 'implementation', 'technical requirements'])
-        print(f"All sections present: {all_sections_present}")
-        
-        if not all_sections_present:
-            print("Adding note about missing sections")
+        if not all(section in gpt_reply.lower() for section in 
+                  ['business impact', 'implementation', 'technical requirements']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
             
         gpt_cache[cache_key] = gpt_reply
         return gpt_reply
         
     except Exception as e:
-        print(f"ERROR in OpenAI API call: {str(e)}")
-        traceback.print_exc()  # Add this import at the top: import traceback
+        print(f"GPT API error: {e}")
         return "Error generating complete analysis. Please try again."
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
@@ -1220,52 +1146,119 @@ Analyze cluster quality and relationships with special attention to GMH product 
 
 Focus on providing actionable insights that can guide GMH-specific automation while maintaining consistency with base product standards."""
 
-    max_retries = 3
-    retry_delay = 1
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Analyze cluster quality metrics with focus on GMH patterns:\n\n"
+                        f"Method: {method}\n"
+                        f"Silhouette Score: {silhouette:.2f}\n"
+                        f"\nIntra-Cluster Similarity:\n{intra_text}\n"
+                        f"\nInter-Cluster Similarity:\n{inter_text}\n"
+                        "Pay special attention to clusters containing GMH-related requests "
+                        "and opportunities for automating GMH product extensions."
+                    )
+                }
+            ],
+            max_tokens=600,
+            temperature=0.3,
+            timeout=20
+        )
+        gpt_reply = response.choices[0].message.content
+        gpt_cache[cache_key] = gpt_reply
+        return gpt_reply
+    except Exception as e:
+        print(f"GPT API error: {e}")
+        return "Unable to analyze similarity scores at the moment."
 
-    for attempt in range(max_retries):
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Analyze cluster quality metrics with focus on GMH patterns:\n\n"
-                            f"Method: {method}\n"
-                            f"Silhouette Score: {silhouette:.2f}\n"
-                            f"\nIntra-Cluster Similarity:\n{intra_text}\n"
-                            f"\nInter-Cluster Similarity:\n{inter_text}\n"
-                            "Pay special attention to clusters containing GMH-related requests "
-                            "and opportunities for automating GMH product extensions."
-                        )
-                    }
-                ],
-                max_tokens=600,  # Increased for more comprehensive GMH analysis
-                temperature=0.3,
-                timeout=20
+def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
+    """
+    Main dispatcher for handling user questions about clustering results.
+    Returns formatted response with method header.
+    """
+    try:
+        # Extract key information safely with defaults
+        method = cluster_results.get('method', 'Unknown')
+        parameters = cluster_results.get('parameters', '')
+        silhouette = cluster_results.get('silhouette', 0.0)
+        
+        # Create method header
+        method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
+
+        # Special case for main insights/patterns questions
+        if any(phrase in user_input.lower() for phrase in [
+            "main insight", "main insights", "key insight", "overview", 
+            "summary", "analyze", "analysis", "theme", "pattern"
+        ]):
+            # Always use detailed theme analysis for main insights
+            detailed_response = generate_gpt_theme_analysis(
+                cluster_results.get('patterns', {}),
+                method,
+                silhouette,
+                cluster_results.get('similarities', {}),
+                cluster_results.get('time_savings', {})
             )
-            gpt_reply = response.choices[0].message.content
-            break
-        except openai.error.RateLimitError:
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))
-                continue
-            gpt_reply = "The analysis service is currently busy. Please try again in a moment."
-        except Exception as e:
-            print(f"GPT API error: {e}")
-            gpt_reply = "Unable to analyze similarity scores at the moment."
-            break
+            return method_header + detailed_response
 
-    gpt_cache[cache_key] = gpt_reply
-    return gpt_reply
+        # Special case for similarity questions
+        if any(phrase in user_input.lower() for phrase in [
+            "similarity", "cohesion", "coherence", "related", "relationship",
+            "connection", "overlap", "distance"
+        ]):
+            similarity_response = generate_gpt_similarity_analysis(
+                cluster_results.get('similarities', {}),
+                method,
+                silhouette
+            )
+            return method_header + similarity_response
 
+        # Try to get cached response for other question types
+        cached_answer = get_cached_response(user_input, cluster_results)
+        if cached_answer:
+            return method_header + cached_answer
+
+        # Specific cluster analysis
+        cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
+        if cluster_match:
+            cluster_id = cluster_match.group(1)
+            cluster_response = generate_gpt_theme_analysis(
+                cluster_results.get('patterns', {}),
+                method,
+                silhouette,
+                cluster_results.get('similarities', {}),
+                cluster_results.get('time_savings', {}),
+                cluster_id=cluster_id
+            )
+            return method_header + cluster_response
+
+        # Default to general analysis for any other question
+        context = {
+            'patterns': cluster_results.get('patterns', {}),
+            'similarities': cluster_results.get('similarities', {}),
+            'time_savings': cluster_results.get('time_savings', {})
+        }
+        
+        # For all other questions, use the detailed theme analysis
+        return method_header + generate_gpt_theme_analysis(
+            cluster_results.get('patterns', {}),
+            method,
+            silhouette,
+            cluster_results.get('similarities', {}),
+            cluster_results.get('time_savings', {})
+        )
+    except Exception as e:
+        print(f"Error in analyze_and_respond: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return "I apologize, but I encountered an error while analyzing. Please try again."
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict):
     """
     Implements an interactive chat interface for analyzing clustering results.
-    Handles message history and error states properly.
     """
     st.header("Ask Questions About the Analysis")
 
@@ -1319,103 +1312,36 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
                         
                 except Exception as e:
                     # Handle errors gracefully
+                    import traceback
                     status.update(label="Analysis failed", state="error")
                     st.error("I apologize, but I encountered an error. Please try again.")
                     print(f"Error in chat interface: {str(e)}")
+                    traceback.print_exc()
 
-
-def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
-    """
-    Main dispatcher for handling user questions about clustering results.
-    Returns formatted response with method header.
-    """
-    try:
-        print("=== analyze_and_respond called with: ===")
-        print(f"User input: {user_input}")
-        print(f"Cluster results keys: {list(cluster_results.keys())}")
-        
-        # Extract key information safely with defaults
-        method = cluster_results.get('method', 'Unknown')
-        parameters = cluster_results.get('parameters', '')
-        silhouette = cluster_results.get('silhouette', 0.0)
-        
-        print(f"Method: {method}, Parameters: {parameters}, Silhouette: {silhouette}")
-        
-        # Create method header
-        method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
-
-        # Try to get cached response first to save API costs
-        print("Checking for cached response...")
-        cached_answer = get_cached_response(user_input, cluster_results)
-        if cached_answer:
-            print("Using cached response")
-            return method_header + cached_answer
-
-        # If no cached response, prepare context for GPT
-        print("No cached response found, preparing context for GPT...")
-        context = {
-            'patterns': cluster_results.get('patterns', {}),
-            'similarities': cluster_results.get('similarities', {}),
-            'time_savings': cluster_results.get('time_savings', {})
-        }
-        
-        # Generate response with GPT
-        print("Calling cached_gpt_response...")
-        gpt_response = cached_gpt_response(
-            user_input=user_input,
-            method=method,
-            silhouette=silhouette,
-            context=json.dumps(context, indent=2)
-        )
-        
-        print(f"GPT Response length: {len(gpt_response)}")
-        print(f"GPT Response preview: {gpt_response[:100]}...")
-        
-        return method_header + gpt_response
-    except Exception as e:
-        print(f"ERROR in analyze_and_respond: {str(e)}")
-        traceback.print_exc()  # Add this import at the top: import traceback
-        return "I apologize, but I encountered an error while analyzing. Please try again."
-
-
-def cached_gpt_response(user_input: str, method: str, silhouette: float, context: str) -> str:
-    """
-    Generates and caches GPT responses for custom queries.
-    """
-    cache_key = ("custom_query", method, f"{silhouette:.4f}", user_input.lower().strip())
-    
-    if cache_key in gpt_cache:
-        return gpt_cache[cache_key]
-        
-    try:
-        system_prompt = """You are a clustering analysis expert. Analyze the provided clustering results
-and answer the user's specific question. Focus on:
-1. Direct relevance to the user's question
-2. Practical implications and actionable insights
-3. Technical accuracy and clarity
-4. Business value and implementation considerations"""
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"Question: {user_input}\n\nContext:\n{context}"
-                }
-            ],
-            max_tokens=300,
-            temperature=0.3,
-            timeout=15
-        )
-        answer = response.choices[0].message.content
-        
-        # Cache the raw response
-        gpt_cache[cache_key] = answer
-        return answer
-    except Exception as e:
-        print(f"Error in cached_gpt_response: {e}")
-        return "I apologize, but I'm having trouble generating a response. Please try rephrasing your question."
+# Add this debug toggle at the bottom of your main function (or wherever fits in your UI)
+def add_debug_toggle():
+    if st.checkbox("Show Debug Information"):
+        with st.expander("Debug Log"):
+            if st.button("Test GPT Connection"):
+                try:
+                    test_response = openai.ChatCompletion.create(
+                        model="gpt-4",
+                        messages=[
+                            {"role": "user", "content": "Respond with 'OpenAI connection successful'"}
+                        ],
+                        max_tokens=20
+                    )
+                    st.success(f"API Connection Test: {test_response.choices[0].message.content}")
+                except Exception as e:
+                    st.error(f"API Connection Error: {str(e)}")
+            
+            if st.button("Test Cache"):
+                st.write("Current cache keys:")
+                st.write(list(gpt_cache.keys()))
+            
+            if st.button("Clear Cache"):
+                gpt_cache.clear()
+                st.success("Cache cleared!")
 
                         
 # ==================== 11) Process Functions for Each Method ====================
