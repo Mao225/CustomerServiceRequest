@@ -1214,7 +1214,6 @@ Focus on providing actionable insights that can guide GMH-specific automation wh
     max_retries = 3
     retry_delay = 1
 
-    
     for attempt in range(max_retries):
         try:
             response = openai.ChatCompletion.create(
