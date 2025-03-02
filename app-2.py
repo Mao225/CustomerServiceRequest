@@ -907,6 +907,17 @@ def show_model_analysis_bgmm(
 
 
 # ==================== 10) Dynamic Chat Interface for Analysis Results ====================
+# Format helper function
+def format_gpt_response(gpt_reply: str) -> str:
+    """
+    Convert GPT's plain text bullets to Markdown-friendly formatting
+    and ensure adequate spacing between paragraphs.
+    """
+    formatted = gpt_reply.replace("•", "\n-")  # Convert '•' to markdown bullet
+    formatted = re.sub(r'[ \t]+\n', '\n', formatted)
+    formatted = re.sub(r'\n{1}', '\n\n', formatted)
+    return formatted
+
 
 # Global cache to avoid repeated GPT calls:
 gpt_cache = {}
@@ -1493,7 +1504,7 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict, method_model1=None
     # Get user input
     user_input = st.text_input(
         "Ask about these clustering results:",
-        key=f"user_input_{method_model1}_{param_display}" if method_model1 else "user_input",  # Add fallback
+        key=f"user_input_{method_model1}_{param_display}" if method_model1 else "user_input",  # fallback
         placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
     )
 
@@ -1509,23 +1520,27 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict, method_model1=None
                 try:
                     # Create status indicator
                     with st.status("Analyzing...", expanded=False) as status:
-                        # Get response
+                        # Get response from your analyze_and_respond() logic
                         response = analyze_and_respond(user_input, data, cluster_results)
-                        # Update status on success
-                        status.update(label="Analysis complete!", state="complete")
-                        # Display response
-                        st.markdown(response)
                         
+                        # Mark success
+                        status.update(label="Analysis complete!", state="complete")
+                        
+                        # Format the GPT reply for readability
+                        formatted_response = format_gpt_response(response)
+
+                        # Display the formatted Markdown text
+                        st.markdown(formatted_response)
+
                         # Update conversation history
                         st.session_state.messages.extend([
                             {"role": "user", "content": user_input},
                             {"role": "assistant", "content": response}
                         ])
                         st.session_state.last_processed.add(user_input)
-                        
+
                 except Exception as e:
                     # Handle errors gracefully
-                    import traceback
                     status.update(label="Analysis failed", state="error")
                     st.error("I apologize, but I encountered an error. Please try again.")
                     print(f"Error in chat interface: {str(e)}")
