@@ -1610,6 +1610,27 @@ def main():
             data, mat, emb_valid, eps_range_dbscan, min_samples_range_dbscan
         )
 
+     # Check if configuration has changed
+    new_config = {
+        "method": method_model1,
+        "params": param_display,
+        "silhouette": silhouette_for_summary,
+        "cluster_col": cluster_col
+    }
+    
+    config_changed = (st.session_state.current_config != new_config)
+    if config_changed:
+        # Clear the GPT cache when configuration changes
+        global gpt_cache
+        gpt_cache = {}
+        # Update the session state
+        st.session_state.current_config = new_config
+        # Reset chat history when configuration changes
+        if "messages" in st.session_state:
+            st.session_state.messages = []
+        if "last_processed" in st.session_state:
+            st.session_state.last_processed = set()
+
     # Process clustering results for chat interface
     if cluster_col and cluster_col in data.columns:
         valid_df = data.dropna(subset=[cluster_col, "Embeddings"])
