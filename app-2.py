@@ -1183,7 +1183,7 @@ IMPORTANT: Use proper spacing between sections. Use bold for important values or
 def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: dict) -> str:
     """
     Main dispatcher for handling user questions about clustering results.
-    Returns formatted response with method header.
+    Dynamically handles parameters for all clustering methods.
     """
     try:
         # Extract key information safely with defaults
@@ -1191,16 +1191,219 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         parameters = cluster_results.get('parameters', '')
         silhouette = cluster_results.get('silhouette', 0.0)
         
+        # Extract parameters based on the clustering method
+        new_parameters = {}
+        
+        # For K-Means, GMM, BGMM - look for K/components parameter
+        k_match = re.search(r'[kK]\s*[=:]\s*(\d+)', user_input.lower())
+        components_match = re.search(r'components?\s*[=:]\s*(\d+)', user_input.lower())
+        
+        # Alternative patterns
+        if not k_match:
+            k_match = re.search(r'[kK]\s+of\s+(\d+)', user_input.lower())
+        if not components_match:
+            components_match = re.search(r'components?\s+of\s+(\d+)', user_input.lower())
+            
+        # For DBSCAN - look for eps and min_samples
+        eps_match = re.search(r'eps\s*[=:]\s*(\d+\.\d+)', user_input.lower())
+        min_samples_match = re.search(r'min_samples\s*[=:]\s*(\d+)', user_input.lower())
+        
+        # Alternative patterns
+        if not eps_match:
+            eps_match = re.search(r'eps\s+of\s+(\d+\.\d+)', user_input.lower())
+        if not min_samples_match:
+            min_samples_match = re.search(r'min_samples?\s+of\s+(\d+)', user_input.lower())
+        
+        # Process the parameters based on clustering method
+        need_regenerate = False
+        model_col = None
+        
+        if method in ["K-Means", "GMM", "BGMM"] and (k_match or components_match):
+            # For K-based methods, extract K/components value
+            k_value = int(k_match.group(1) if k_match else components_match.group(1))
+            new_parameters["k"] = k_value
+            need_regenerate = True
+            # Set the appropriate model column
+            if method == "K-Means":
+                model_col = "Kmeans_Model"
+            elif method == "GMM":
+                model_col = "GMM_Model"
+            else:  # BGMM
+                model_col = "BGMM_Model"
+            
+        elif method == "DBSCAN" and (eps_match or min_samples_match):
+            # For DBSCAN, extract eps and min_samples
+            if eps_match:
+                new_parameters["eps"] = float(eps_match.group(1))
+            if min_samples_match:
+                new_parameters["min_samples"] = int(min_samples_match.group(1))
+            need_regenerate = True
+            model_col = "DBSCAN_Model"
+        
+        # Regenerate clustering if needed
+        if need_regenerate and model_col:
+            # Get valid embeddings
+            valid_embeddings = data["Embeddings"].dropna()
+            if len(valid_embeddings) > 0:
+                embedding_matrix = np.vstack(valid_embeddings)
+                labels = None
+                
+                # Regenerate clustering based on method
+                if method == "K-Means" and "k" in new_parameters:
+                    k = new_parameters["k"]
+                    labels = run_kmeans(embedding_matrix, k)
+                        
+                elif method == "GMM" and "k" in new_parameters:
+                    k = new_parameters["k"]
+                    labels, _, _ = run_gmm(embedding_matrix, k)
+                        
+                elif method == "BGMM" and "k" in new_parameters:
+                    k = new_parameters["k"]
+                    labels, _, _ = run_bgmm(embedding_matrix, k)
+                        
+                elif method == "DBSCAN":
+                    # Extract current parameters if not provided
+                    current_eps_match = re.search(r'eps=(\d+\.\d+)', parameters)
+                    current_ms_match = re.search(r'min_samples=(\d+)', parameters)
+                    
+                    current_eps = float(current_eps_match.group(1)) if current_eps_match else 0.3
+                    current_ms = int(current_ms_match.group(1)) if current_ms_match else 5
+                    
+                    # Use new parameters if provided, otherwise keep current
+                    eps_val = new_parameters.get("eps", current_eps)
+                    min_samp = new_parameters.get("min_samples", current_ms)
+                    
+                    # Run DBSCAN with the parameters
+                    labels = run_dbscan(embedding_matrix, eps_val=eps_val, min_samp=min_samp)
+                    if labels is not None:
+                        parameters = f"(eps={eps_val}, min_samples={min_samp})"
+                
+                # If we successfully regenerated labels, update everything
+                if labels is not None:
+                    # Update data with new labels
+                    data[model_col] = np.nan
+                    data.loc[valid_embeddings.index, model_col] = labels
+                    
+                    # Calculate new silhouette score
+                    if method == "DBSCAN":
+                        # For DBSCAN, exclude noise points in silhouette calculation
+                        mask = (labels != -1)
+                        if sum(mask) > 1 and len(np.unique(labels[mask])) >= 2:
+                            silhouette = silhouette_score(embedding_matrix[mask], labels[mask])
+                        else:
+                            silhouette = 0.0
+                    else:
+                        # For other methods, use all points
+                        if len(np.unique(labels)) >= 2:
+                            silhouette = silhouette_score(embedding_matrix, labels)
+                        else:
+                            silhouette = 0.0
+                    
+                    # Update parameter string for K-based methods
+                    if method in ["K-Means", "GMM", "BGMM"] and "k" in new_parameters:
+                        parameters = f"(K={new_parameters['k']})"
+                    
+                    # Update cluster_results with new parameters and silhouette
+                    cluster_results['parameters'] = parameters
+                    cluster_results['silhouette'] = silhouette
+                    
+                    # Clear cache entries related to this method
+                    global gpt_cache
+                    keys_to_remove = []
+                    for key in gpt_cache.keys():
+                        if isinstance(key, tuple) and len(key) > 1 and key[1] == method:
+                            keys_to_remove.append(key)
+                    for key in keys_to_remove:
+                        gpt_cache.pop(key, None)
+                    
+                    # Regenerate patterns and similarities based on new clustering
+                    valid_df = data.dropna(subset=[model_col, "Embeddings"])
+                    if not valid_df.empty:
+                        E_list, L_list = [], []
+                        for _, row in valid_df.iterrows():
+                            arr = parse_embedding(row["Embeddings"])
+                            lab = row[model_col]
+                            if arr is not None:
+                                E_list.append(arr)
+                                L_list.append(int(lab))
+                        
+                        if E_list:
+                            X = np.vstack(E_list)
+                            Y = np.array(L_list)
+                            intraD, c_list, mat = analyze_cluster_similarity(X, Y)
+                            
+                            # Update intra similarity dictionary
+                            intra_dict = {}
+                            for k, v in intraD.items():
+                                k_str = str(int(k))
+                                intra_dict[k_str] = v
+                            
+                            # Update inter similarity dictionary
+                            inter_dict = {}
+                            for i, c1 in enumerate(c_list):
+                                for j, c2 in enumerate(c_list):
+                                    if i < j:
+                                        key_str = f"{int(c1)}-{int(c2)}"
+                                        inter_dict[key_str] = mat[i, j]
+                            
+                            # Update the similarities in cluster_results
+                            cluster_results['similarities'] = {
+                                'intra': intra_dict,
+                                'inter': inter_dict
+                            }
+                            
+                            # Extract representative requests for each cluster
+                            reps = extract_representative_requests(valid_df, X, Y, n_representatives=5)
+                            cluster_sizes = valid_df[model_col].value_counts()
+                            total_requests = cluster_sizes.sum()
+                            
+                            # Update patterns
+                            patterns_dict = {}
+                            for cluster_id, requests in reps.items():
+                                if cluster_id == -1:
+                                    continue  # Skip noise clusters
+                                cluster_id_str = str(int(cluster_id))
+                                size_percentage = (cluster_sizes.get(cluster_id, 0) / total_requests) * 100
+                                
+                                patterns_dict[cluster_id_str] = {
+                                    'size_percentage': size_percentage,
+                                    'requests': requests,
+                                    'automation_potential': (
+                                        'high' if intraD.get(cluster_id, 0) > 0.7
+                                        else 'medium' if intraD.get(cluster_id, 0) > 0.5
+                                        else 'low'
+                                    ),
+                                    'intra_similarity': intraD.get(cluster_id, 0)
+                                }
+                            
+                            # Update patterns in cluster_results
+                            cluster_results['patterns'] = patterns_dict
+                            
+                            # Optionally recalculate time savings if necessary
+                            if 'total_time_saving' in st.session_state:
+                                total_saving = st.session_state['total_time_saving']
+                                time_savings = {}
+                                for cl_id in cluster_sizes.index:
+                                    if cl_id == -1:
+                                        continue  # Skip noise
+                                    size_factor = cluster_sizes[cl_id] / cluster_sizes.sum()
+                                    similarity_factor = intraD.get(cl_id, 0)
+                                    confidence = 'high' if similarity_factor > 0.7 else 'medium'
+                                    cluster_id_str = str(int(cl_id))
+                                    time_savings[cluster_id_str] = {
+                                        'minutes': total_saving * size_factor * similarity_factor,
+                                        'confidence': confidence
+                                    }
+                                cluster_results['time_savings'] = time_savings
+        
         # Check if user is asking about a specific cluster
         cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
         
-        # Create method header - update it if user mentioned a specific cluster
+        # Create method header
         if cluster_match:
             specific_cluster = cluster_match.group(1)
-            # Just add the cluster number to the method header
             method_header = f"\n**Analysis for {method} cluster {specific_cluster} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
         else:
-            # Default header format
             method_header = f"\n**Analysis for {method} {parameters} (Silhouette={silhouette:.2f}):**\n\n"
 
         # Special case for main insights/patterns questions
@@ -1208,14 +1411,13 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             "main insight", "main insights", "key insight", "overview", 
             "summary", "analyze", "analysis", "theme", "pattern"
         ]):
-            # Always use detailed theme analysis for main insights
             detailed_response = generate_gpt_theme_analysis(
                 cluster_results.get('patterns', {}),
                 method,
                 silhouette,
                 cluster_results.get('similarities', {}),
                 cluster_results.get('time_savings', {}),
-                parameters=parameters  # Pass parameters here
+                parameters=parameters
             )
             return method_header + detailed_response
 
@@ -1228,7 +1430,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 cluster_results.get('similarities', {}),
                 method,
                 silhouette,
-                parameters=parameters  # Pass parameters here
+                parameters=parameters
             )
             return method_header + similarity_response
 
@@ -1238,7 +1440,6 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
             return method_header + cached_answer
 
         # Specific cluster analysis
-        cluster_match = re.search(r"cluster\s+(\d+)", user_input.lower())
         if cluster_match:
             cluster_id = cluster_match.group(1)
             cluster_response = generate_gpt_theme_analysis(
@@ -1248,31 +1449,26 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
                 cluster_results.get('similarities', {}),
                 cluster_results.get('time_savings', {}),
                 cluster_id=cluster_id,
-                parameters=parameters  # Pass parameters here
+                parameters=parameters
             )
             return method_header + cluster_response
 
-        # Default to general analysis for any other question
-        context = {
-            'patterns': cluster_results.get('patterns', {}),
-            'similarities': cluster_results.get('similarities', {}),
-            'time_savings': cluster_results.get('time_savings', {})
-        }
-        
-        # For all other questions, use the detailed theme analysis
+        # Default to general analysis
         return method_header + generate_gpt_theme_analysis(
             cluster_results.get('patterns', {}),
             method,
             silhouette,
             cluster_results.get('similarities', {}),
             cluster_results.get('time_savings', {}),
-            parameters=parameters  # Pass parameters here
+            parameters=parameters
         )
+        
     except Exception as e:
         print(f"Error in analyze_and_respond: {str(e)}")
         import traceback
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
+        
 
 def chat_interface(data: pd.DataFrame, cluster_results: dict, method_model1=None, param_display=""):
     """
