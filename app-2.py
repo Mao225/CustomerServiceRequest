@@ -1255,7 +1255,67 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
+def chat_interface(data: pd.DataFrame, cluster_results: dict):
+    """
+    Implements an interactive chat interface for analyzing clustering results.
+    """
+    st.header("Ask Questions About the Analysis")
 
+    # Initialize session states if not exist
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "last_processed" not in st.session_state:
+        st.session_state.last_processed = set()
+
+    # Create container for chat
+    chat_container = st.container()
+    
+    # Display existing chat history
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    # Get user input
+    user_input = st.text_input(
+        "Ask about these clustering results:",
+        key="user_input",
+        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+    )
+
+    # Process new input if not already processed
+    if user_input and user_input not in st.session_state.last_processed:
+        with chat_container:
+            # Show user message
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            # Process and show assistant response
+            with st.chat_message("assistant"):
+                try:
+                    # Create status indicator
+                    with st.status("Analyzing...", expanded=False) as status:
+                        # Get response
+                        response = analyze_and_respond(user_input, data, cluster_results)
+                        # Update status on success
+                        status.update(label="Analysis complete!", state="complete")
+                        # Display response
+                        st.markdown(response)
+                        
+                        # Update conversation history
+                        st.session_state.messages.extend([
+                            {"role": "user", "content": user_input},
+                            {"role": "assistant", "content": response}
+                        ])
+                        st.session_state.last_processed.add(user_input)
+                        
+                except Exception as e:
+                    # Handle errors gracefully
+                    import traceback
+                    status.update(label="Analysis failed", state="error")
+                    st.error("I apologize, but I encountered an error. Please try again.")
+                    print(f"Error in chat interface: {str(e)}")
+                    traceback.print_exc()
                         
 # ==================== 11) Process Functions for Each Method ====================
 
