@@ -975,12 +975,12 @@ def generate_gpt_theme_analysis(
     """
     Enhanced theme analysis that includes business impact and plant-specific logic.
     """
-    # Build unique cache key
+    # Build unique cache key - keep existing cache key logic
     cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
-    # Prepare data for GPT
+    # Keep existing data preparation logic
     if cluster_id is None:
         question_prompt = "Analyze all clusters for insights and modularization opportunities."
         selected_clusters = cluster_patterns
@@ -988,7 +988,7 @@ def generate_gpt_theme_analysis(
         question_prompt = f"Analyze Cluster {cluster_id} specifically for modularization opportunities."
         selected_clusters = {cluster_id: cluster_patterns.get(cluster_id, {})}
 
-    # Gather cluster data including time savings
+    # Keep existing cluster data gathering logic
     cluster_data = {}
     for cid, info in selected_clusters.items():
         if isinstance(info, dict):
@@ -999,6 +999,7 @@ def generate_gpt_theme_analysis(
                 'time_savings': time_savings.get(str(cid), {})
             }
 
+    # Update system prompt to improve formatting - only change formatting instructions
     system_prompt = """You are an industrial equipment analytics expert analyzing service request clusters to identify automation, modernization, and standardization opportunities.
 
 Present your analysis in a clear, readable format with appropriate spacing and visual structure:
@@ -1035,9 +1036,10 @@ Present your analysis in a clear, readable format with appropriate spacing and v
    • Use numbered lists for sequential steps
    • Keep paragraphs short (3-5 lines maximum)
 
-Format your response with adequate spacing between sections and bullet points. Use bold for important conclusions or findings. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
+Format your response with adequate spacing between sections and bullet points. Ensure each major section (1-5) is clearly separated from the others. Be open to discovering modernization opportunities in ANY domain, not just motors or GMH extensions."""
 
     try:
+        # Keep existing GPT call logic
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
@@ -1060,7 +1062,14 @@ Format your response with adequate spacing between sections and bullet points. U
         )
         gpt_reply = response.choices[0].message.content
         
-        # Verify response completeness
+        # Improve formatting of the response
+        gpt_reply = gpt_reply.replace("\n1. ", "\n\n1. ")
+        gpt_reply = gpt_reply.replace("\n2. ", "\n\n2. ")
+        gpt_reply = gpt_reply.replace("\n3. ", "\n\n3. ")
+        gpt_reply = gpt_reply.replace("\n4. ", "\n\n4. ")
+        gpt_reply = gpt_reply.replace("\n5. ", "\n\n5. ")
+            
+        # Verify response completeness (keep existing logic)
         if not all(section in gpt_reply.lower() for section in 
                   ['clustering quality', 'domain patterns', 'modernization', 'automation', 'implementation']):
             gpt_reply += "\n\nNote: Some sections appear to be missing. Please ask for clarification if needed."
