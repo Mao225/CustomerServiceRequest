@@ -927,12 +927,17 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     # Safely extract values with defaults
     method = cluster_results.get('method', 'Unknown')
     silhouette = cluster_results.get('silhouette', 0.0)
+    parameters = cluster_results.get('parameters', '')
+    
+    # We now include the full parameter display in the cache key to differentiate
+    # between different configurations of the same method
+    base_key_parts = (method, parameters, f"{silhouette:.4f}")
     
     # Check for cluster-specific question
     cluster_match = re.search(r"cluster\s+(\d+)", question.lower())
     if cluster_match:
         cluster_id = cluster_match.group(1)
-        cache_key = ("cluster_analysis", method, f"{silhouette:.4f}", cluster_id)
+        cache_key = ("cluster_analysis",) + base_key_parts + (cluster_id,)
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
         return None
@@ -942,21 +947,21 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
         "similarity", "cohesion", "coherence", "related", "relationship",
         "connection", "overlap", "distance"
     ]):
-        cache_key = ("similarity_analysis", method, f"{silhouette:.4f}")
+        cache_key = ("similarity_analysis",) + base_key_parts
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
         return None
 
     # Handle silhouette score questions
     if any(phrase in question.lower() for phrase in ["silhouette", "quality", "validation", "score"]):
-        cache_key = ("quality_analysis", method, f"{silhouette:.4f}")
+        cache_key = ("quality_analysis",) + base_key_parts
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
         return None
 
     # Handle time savings questions
     if any(phrase in question.lower() for phrase in ["time", "saving", "efficiency", "ROI", "benefit"]):
-        cache_key = ("time_analysis", method, f"{silhouette:.4f}")
+        cache_key = ("time_analysis",) + base_key_parts
         if cache_key in gpt_cache:
             return gpt_cache[cache_key]
         return None
@@ -964,22 +969,26 @@ def get_cached_response(question: str, cluster_results: dict) -> Optional[str]:
     # No cache hit found - force detailed analysis
     return None
 
+
 def generate_gpt_theme_analysis(
     cluster_patterns, 
     method, 
     silhouette, 
     cluster_similarities, 
     time_savings,
-    cluster_id=None
+    cluster_id=None,
+    parameters=""  # Add parameters here
 ):
     """
     Enhanced theme analysis that includes business impact and plant-specific logic.
+    Now includes the clustering parameters in the cache key.
     """
-    # Build unique cache key
-    cache_key = ("theme_analysis", method, f"{silhouette:.4f}", str(cluster_id))
+    # Build unique cache key with parameters included
+    cache_key = ("theme_analysis", method, parameters, f"{silhouette:.4f}", str(cluster_id))
     if cache_key in gpt_cache:
         return gpt_cache[cache_key]
 
+    # Rest of function unchanged...
     # Prepare data for GPT
     if cluster_id is None:
         question_prompt = "Analyze all clusters for insights and modularization opportunities."
@@ -1046,7 +1055,7 @@ Format your response with adequate spacing between sections and bullet points. U
                     "role": "user",
                     "content": (
                         f"{question_prompt}\n\n"
-                        f"Method: {method}\n"
+                        f"Method: {method} {parameters}\n"  # Now includes parameters
                         f"Silhouette Score: {silhouette:.2f}\n"
                         f"Cluster Data:\n{json.dumps(cluster_data, indent=2)}\n"
                         "Note: Pay special attention to all potentially repeating patterns "
@@ -1071,7 +1080,6 @@ Format your response with adequate spacing between sections and bullet points. U
     except Exception as e:
         print(f"GPT API error: {e}")
         return "Error generating complete analysis. Please try again."
-
 
 
 def generate_gpt_similarity_analysis(cluster_similarities, method, silhouette):
