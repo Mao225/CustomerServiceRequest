@@ -17,6 +17,7 @@ from collections import Counter
 from mpl_toolkits.mplot3d import Axes3D
 import re
 from typing import Dict, List, Optional, Union
+import traceback
 
 # ==================== 1) Data Loading & Parsing ====================
 
