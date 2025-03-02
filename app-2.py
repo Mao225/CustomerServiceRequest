@@ -1274,7 +1274,7 @@ def analyze_and_respond(user_input: str, data: pd.DataFrame, cluster_results: di
         traceback.print_exc()
         return "I apologize, but I encountered an error while analyzing. Please try again."
 
-def chat_interface(data: pd.DataFrame, cluster_results: dict):
+def chat_interface(data: pd.DataFrame, cluster_results: dict, method_model1=None, param_display=""):
     """
     Implements an interactive chat interface for analyzing clustering results.
     """
@@ -1297,10 +1297,10 @@ def chat_interface(data: pd.DataFrame, cluster_results: dict):
 
     # Get user input
     user_input = st.text_input(
-    "Ask about these clustering results:",
-    key=f"user_input_{method_model1}_{param_display}",  # Different key for different configurations
-    placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
-)
+        "Ask about these clustering results:",
+        key=f"user_input_{method_model1}_{param_display}" if method_model1 else "user_input",  # Add fallback
+        placeholder="e.g., 'What are the main insights?' or 'Tell me about cluster 2'"
+    )
 
     # Process new input if not already processed
     if user_input and user_input not in st.session_state.last_processed:
@@ -1590,11 +1590,12 @@ def process_clustering_results(
                 'similarities': cluster_similarities,
                 'patterns': cluster_patterns,
                 'time_savings': time_savings
-            }
+            },
+            method_model1=method_model1,  # Pass the method_model1 parameter
+            param_display=param_display   # Pass the param_display parameter
         )
     else:
         st.warning("No valid embeddings for analysis")
-
 
 # ==================== 13) Main Function ====================
 
